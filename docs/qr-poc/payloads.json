@@ -1,0 +1,12 @@
+{
+  "generatedAt": "2026-09-28T04:20:32.559Z",
+  "status": "NOT_DEVICE_VERIFIED",
+  "cases": [
+    {
+      "id": "https-page",
+      "purpose": "Stable customer page. Real-device scans NOT TESTED.",
+      "payload": "http://localhost:5173/b/scanner-test?source=qr",
+      "sha256": "2eb20c9682ea03b33e48ad2105b51c4950788e8c164134f03e450bc6c28f8a28"
+    }
+  ]
+}

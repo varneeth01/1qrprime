@@ -1,0 +1,25 @@
+services:
+  prime:
+    build: .
+    ports:
+      - '127.0.0.1:3001:3001'
+    environment:
+      NODE_ENV: production
+      DATABASE_PATH: /data/prime.sqlite
+      PUBLIC_ORIGIN: ${PUBLIC_ORIGIN:?Set HTTPS public origin}
+      SUPPORT_EMAIL: ${SUPPORT_EMAIL:?Set support email}
+      SMTP_URL: ${SMTP_URL:?Set SMTP transport}
+      MAIL_FROM: ${MAIL_FROM:?Set sender}
+      AWS_REGION: ${AWS_REGION:-ap-south-1}
+      S3_BUCKET: ${S3_BUCKET:-}
+      S3_PUBLIC_ORIGIN: ${S3_PUBLIC_ORIGIN:-}
+    volumes:
+      - prime-data:/data
+    restart: unless-stopped
+    healthcheck:
+      test: ['CMD', 'node', '-e', "fetch('http://localhost:3001/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+volumes:
+  prime-data:
