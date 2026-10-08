@@ -412,7 +412,7 @@ function App() {
               {section === "menu" && <Catalogue l={l} done={refresh} />}{" "}
               {section === "tables" && <Tables l={l} />}{" "}
               {section === "orders" && <Orders l={l} />}{" "}
-              {section === "payments" && <Payments l={l} />}{" "}
+              {section === "payments" && <Payments l={l} emailVerified={!!me.emailVerified} />}{" "}
               {section === "qr" && <QrStudio l={l} />}{" "}
               {section === "customer" && <CustomerDesigner l={l} done={refresh} />}{" "}
               {section === "analytics" && <Analytics l={l} />}{" "}
@@ -1432,7 +1432,7 @@ function Requests({ l }: any) {
     </section>
   );
 }
-function Payments({ l }: any) {
+function Payments({ l, emailVerified }: any) {
   const { data, error, load } = usePoll(`/locations/${l.id}/routes`, 15000),
     [failure, setFailure] = useState("");
   async function act(path: string, body: Any = {}) {
@@ -1453,6 +1453,16 @@ function Payments({ l }: any) {
           attempts only; it cannot fix a customer’s bank or app failure.
         </span>
       </div>
+      {!emailVerified && l.role === "owner" && (
+        <div className="note">
+          <ShieldCheck />
+          <span>
+            <strong>Verify your email to add payment destinations.</strong>{" "}
+            Existing routes remain visible, but production blocks new payment
+            destinations until the owner email is verified.
+          </span>
+        </div>
+      )}
       <ErrorBox error={failure || error} />
       <div className="two-columns">
         <section className="card">
@@ -1533,6 +1543,10 @@ function Payments({ l }: any) {
             className="card"
             onSubmit={async (e) => {
               e.preventDefault();
+              if (!emailVerified) {
+                setFailure("Verify your email before adding payment destinations.");
+                return;
+              }
               const form = e.currentTarget;
               try {
                 await api(
@@ -1565,7 +1579,7 @@ function Payments({ l }: any) {
               New destinations are saved as drafts. Support must independently
               verify merchant ownership before activation.
             </p>
-            <button className="primary">
+            <button className="primary" disabled={!emailVerified}>
               Save draft <Plus size={16} />
             </button>
           </form>
