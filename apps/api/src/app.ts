@@ -1,4 +1,4 @@
-import Fastify, { type FastifyRequest } from "fastify";
+import Fastify, { type FastifyInstance, type FastifyRequest } from "fastify";
 import cookie from "@fastify/cookie";
 import cors from "@fastify/cors";
 import helmet from "@fastify/helmet";
@@ -50,12 +50,19 @@ const credentials = z.object({
     .transform((s) => s.toLowerCase()),
   password: z.string().min(12).max(128),
 });
-export async function createApp(db: Db, c: Config, asyncDatabase?: AsyncDatabase) {
-  const app = Fastify({
-    logger: c.NODE_ENV !== "test",
-    bodyLimit: 1048576,
-    trustProxy: false,
-  });
+export async function createApp(
+  db: Db,
+  c: Config,
+  asyncDatabase?: AsyncDatabase,
+  existingApp?: FastifyInstance,
+) {
+  const app =
+    existingApp ??
+    Fastify({
+      logger: c.NODE_ENV !== "test",
+      bodyLimit: 1048576,
+      trustProxy: false,
+    });
   const localMediaRoot = resolve(dirname(c.DATABASE_PATH), "uploads");
   if (c.STORAGE_DRIVER === "local") mkdirSync(localMediaRoot, { recursive: true });
   await app.register(cookie);
