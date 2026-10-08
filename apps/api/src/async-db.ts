@@ -144,9 +144,9 @@ export function createPostgresDatabase(connectionString = process.env.DATABASE_U
     idleTimeoutMillis: 10_000,
     connectionTimeoutMillis: 10_000,
   });
-  // Vercel keeps the pool attached to the Fluid compute lifecycle and drains it
-  // when an invocation is suspended. Calling this once per module is intentional.
-  attachDatabasePool(sharedPool);
+  // Only attach lifecycle hooks inside Vercel. A long-running VPS process keeps
+  // the PostgreSQL pool alive normally.
+  if (process.env.VERCEL) attachDatabasePool(sharedPool);
   return new PostgresDatabase(sharedPool);
 }
 
