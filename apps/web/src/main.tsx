@@ -40,7 +40,7 @@ import {
   Palette,
   Pencil,
 } from "lucide-react";
-import { api, updateLocation, money, label, type Any } from "./api";
+import { api, ApiError, updateLocation, money, label, type Any } from "./api";
 import "./style.css";
 function ErrorBox({ error }: { error: string }) {
   return error ? (
@@ -144,7 +144,12 @@ function Auth({ done }: { done: () => void }) {
               );
               done();
             } catch (e) {
-              setError((e as Error).message);
+              if (e instanceof ApiError && !register && e.status === 401)
+                setError("Email or password is incorrect.");
+              else if (e instanceof ApiError && register && e.status === 409)
+                setError("Unable to create this account. If you already registered, sign in or use password recovery.");
+              else
+                setError((e as Error).message);
             } finally {
               setBusy(false);
             }
