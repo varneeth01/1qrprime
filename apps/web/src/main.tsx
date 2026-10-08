@@ -40,7 +40,7 @@ import {
   Palette,
   Pencil,
 } from "lucide-react";
-import { api, money, label, type Any } from "./api";
+import { api, updateLocation, money, label, type Any } from "./api";
 import "./style.css";
 function ErrorBox({ error }: { error: string }) {
   return error ? (
@@ -675,7 +675,7 @@ function NewLocation({ me, done, initial }: any) {
     if (!updated) return;
     setBusy(true); setError("");
     try {
-      const live = await api(`/locations/${updated.id}`, "PUT", { name, category, profile: profile(), published: true, version: updated.version });
+      const live = await updateLocation(updated.id, { name, category, profile: profile(), published: true, version: updated.version });
       setDraft(live); setStep(6);
     } catch (e) { setError((e as Error).message); } finally { setBusy(false); }
   }
@@ -708,7 +708,7 @@ function Profile({ l, done }: any) {
         onSubmit={async (e) => {
           e.preventDefault();
           try {
-            await api(`/locations/${l.id}`, "PUT", {
+            await updateLocation(l.id, {
               name,
               category,
               profile: p,
@@ -1131,7 +1131,7 @@ function CustomerDesigner({ l, done }: any) {
   async function save(e: any) {
     e.preventDefault(); setError(""); setSaved(false);
     try {
-      await api(`/locations/${l.id}`, "PUT", { name: l.name, category: l.category, published: !!l.published, version: l.version, profile: { ...p, appearance: a } });
+      await updateLocation(l.id, { name: l.name, category: l.category, published: !!l.published, version: l.version, profile: { ...p, appearance: a } });
       setSaved(true); done();
     } catch (e) { setError((e as Error).message); }
   }
@@ -1802,7 +1802,7 @@ function SettingsPage({ tenant, go, refresh }: any) {
             try {
               await api("/auth/request-verification", "POST");
               alert(
-                "Verification email sent. Local development mail is stored in the API data/mail-preview directory.",
+                "Verification email sent. Check your inbox (and spam folder) for the verification link.",
               );
             } catch (e) {
               setError((e as Error).message);
