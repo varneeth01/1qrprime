@@ -6,7 +6,9 @@ const c = config();
 const app = Fastify({
   logger: c.NODE_ENV !== "test",
   bodyLimit: 1048576,
-  trustProxy: false,
+  // In VPS/Docker production, requests arrive through Coolify's reverse proxy.
+  // Trust proxy headers there so rate limiting and client IPs work correctly.
+  trustProxy: c.NODE_ENV === "production" && !process.env.VERCEL,
 });
 
 let bootstrapStage = "database";
@@ -34,6 +36,9 @@ async function start() {
     bootstrapStage = "listen";
     const listening = app.listen({
       port: Number(process.env.PORT || 3000),
+      ...(process.env.VERCEL
+        ? {}
+        : { host: process.env.HOST || "0.0.0.0" }),
     });
 
     await listening;
