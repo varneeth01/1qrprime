@@ -6,6 +6,7 @@ export const envSchema = z.object({
   PORT: z.coerce.number().default(3001),
   DATABASE_DRIVER: z.enum(["sqlite", "postgres"]).default("sqlite"),
   DATABASE_PATH: z.string().default("./data/prime.sqlite"),
+  MEDIA_ROOT: z.string().default("./data/uploads"),
   DATABASE_URL: z.string().url().optional(),
   DIRECT_URL: z.string().url().optional(),
   PUBLIC_ORIGIN: z.string().url().default("http://localhost:5173"),
@@ -48,8 +49,12 @@ export function config() {
     throw Error("Production requires HTTPS origins, SUPPORT_EMAIL, DATABASE_URL, and a production-safe SESSION_SECRET");
   if (c.NODE_ENV === "production" && /trycloudflare\.com|localhost|127\.\d+\.\d+\.\d+|10\.0\.2\.2/i.test(`${c.PUBLIC_ORIGIN} ${c.API_PUBLIC_ORIGIN} ${c.ADMIN_ORIGIN}`))
     throw Error("Production origins cannot use preview, loopback, or emulator hosts");
-  if (c.NODE_ENV === "production" && !["s3", "vercel-blob"].includes(c.STORAGE_DRIVER))
-    throw Error("Production requires STORAGE_DRIVER=vercel-blob or a configured legacy S3 adapter");
+  if (
+    c.NODE_ENV === "production" &&
+    c.STORAGE_DRIVER === "local" &&
+    !c.MEDIA_ROOT.startsWith("/")
+  )
+    throw Error("Production local storage requires an absolute MEDIA_ROOT");
   if (c.NODE_ENV === "production" && c.STORAGE_DRIVER === "vercel-blob" && !c.BLOB_READ_WRITE_TOKEN)
     throw Error("Vercel Blob storage requires BLOB_READ_WRITE_TOKEN");
   if (c.NODE_ENV === "production" && c.DATABASE_DRIVER !== "postgres")
