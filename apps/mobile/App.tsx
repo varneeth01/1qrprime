@@ -35,8 +35,10 @@ function checkedOrigin(value: string, label: string) {
   const loopback = /^(localhost|127\.\d+\.\d+\.\d+|10\.0\.2\.2)$/i.test(parsed.hostname);
   if (ENVIRONMENT !== "local" && (loopback || parsed.protocol !== "https:"))
     throw new Error(`Invalid ${label} for ${ENVIRONMENT}: ${value}. Remote builds require a public HTTPS URL.`);
-  if (ENVIRONMENT === "production" && (parsed.hostname !== "api.1qrprime.com" || parsed.pathname !== "/api"))
+  if (ENVIRONMENT === "production" && label === "EXPO_PUBLIC_API_URL" && (parsed.hostname !== "api.1qrprime.com" || parsed.pathname !== "/api"))
     throw new Error(`Production mobile builds must use https://api.1qrprime.com/api, received ${value}`);
+  if (ENVIRONMENT === "production" && label === "EXPO_PUBLIC_WEB_ORIGIN" && (parsed.hostname !== "1qrprime.com" || parsed.pathname !== "/"))
+    throw new Error(`Production mobile builds must use https://1qrprime.com, received ${value}`);
   return value.replace(/\/$/, "");
 }
 const ORIGIN = checkedOrigin(apiValue, "EXPO_PUBLIC_API_URL").replace(/\/api$/, "");

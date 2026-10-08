@@ -1897,7 +1897,7 @@ function Admin() {
   }
   useEffect(() => {
     api("/admin/plans")
-      .then(setPlans)
+      .then((value) => setPlans(value as Any[]))
       .catch((e) => setError(e.message));
   }, []);
   return (
@@ -1917,7 +1917,7 @@ function Admin() {
           try {
             const q = new FormData(e.currentTarget).get("q");
             setAccounts(
-              await api(`/admin/accounts?q=${encodeURIComponent(String(q))}`),
+              (await api(`/admin/accounts?q=${encodeURIComponent(String(q))}`)) as Any[],
             );
           } catch (e) {
             setError((e as Error).message);
