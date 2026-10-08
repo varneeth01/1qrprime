@@ -7,12 +7,10 @@ import multipart from "@fastify/multipart";
 import { randomUUID, randomBytes, createHash } from "node:crypto";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
-import argon2 from "argon2";
 import { z, ZodError } from "zod";
 import QRCode from "qrcode";
 import { put as putBlob } from "@vercel/blob";
 import { sendMail } from "./mail.js";
-import sharp from "sharp";
 import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
 import { type Db } from "./db.js";
 import { createSqliteDatabase, type AsyncDatabase, type DbTransaction } from "./async-db.js";
@@ -246,6 +244,7 @@ export async function createApp(db: Db, c: Config, asyncDatabase?: AsyncDatabase
       const b = credentials
         .extend({ name: z.string().min(2).max(100) })
         .parse(r.body);
+      const { default: argon2 } = await import("argon2");
       const password = await argon2.hash(b.password);
       const userId = id(),
         tenant = id();
@@ -266,6 +265,7 @@ export async function createApp(db: Db, c: Config, asyncDatabase?: AsyncDatabase
     async (r, reply) => {
       const b = credentials.parse(r.body);
       const u = await authRepository.findUserByEmail(b.email);
+      const { default: argon2 } = await import("argon2");
       if (!u || !(await argon2.verify(u.password, b.password)))
         fail(401, "Invalid email or password");
       return await newSession(u.id, r, reply);
@@ -311,6 +311,7 @@ export async function createApp(db: Db, c: Config, asyncDatabase?: AsyncDatabase
         password: z.string().min(12).max(128),
       })
       .parse(r.body);
+    const { default: argon2 } = await import("argon2");
     const password = await argon2.hash(b.password);
     await asyncDb.transaction(async (tx) => {
       const t = await tx.get<any>("SELECT * FROM email_tokens WHERE token_hash=? AND purpose='reset' AND expires_at>?", [hash(b.token), Date.now()]);
@@ -632,6 +633,7 @@ export async function createApp(db: Db, c: Config, asyncDatabase?: AsyncDatabase
     if (!f || !["image/jpeg", "image/png", "image/webp"].includes(f.mimetype))
       fail(400, "Use JPEG, PNG or WebP up to 5 MB");
     const raw = await f!.toBuffer();
+    const { default: sharp } = await import("sharp");
     const image = await sharp(raw, { limitInputPixels: 25000000 })
       .rotate()
       .resize(1600, 1600, { fit: "inside", withoutEnlargement: true })
