@@ -15,10 +15,10 @@ Set these in Coolify; never commit their values:
 
 - `DATABASE_URL` — Neon pooled connection string
 - `DIRECT_URL` — Neon direct/non-pooled connection string (recommended for migrations)
-- `SESSION_SECRET` — at least 32 random characters
-- `SUPPORT_EMAIL`
+- `SESSION_SECRET` is generated automatically by Coolify and persists across redeploys.
 - `SMTP_PASSWORD` — Resend SMTP credential
-- `SMTP_FROM_EMAIL` — verified sender, e.g. `noreply@1qrprime.com`
+- `SMTP_FROM_EMAIL` defaults to `noreply@1qrprime.com` (override only if your verified sender differs).
+- `SUPPORT_EMAIL` defaults to `support@1qrprime.com`.
 
 Optional overrides:
 
