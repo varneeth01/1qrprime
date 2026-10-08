@@ -12,9 +12,9 @@ services:
       MEDIA_ROOT: /data/media
       DATABASE_URL: ${DATABASE_URL:?Set Neon pooled DATABASE_URL}
       DIRECT_URL: ${DIRECT_URL:-}
-      PUBLIC_ORIGIN: https://1qrprime.com
-      API_PUBLIC_ORIGIN: https://api.1qrprime.com
-      ADMIN_ORIGIN: https://admin.1qrprime.com
+      PUBLIC_ORIGIN: ${PUBLIC_ORIGIN:-https://1qrprime.com}
+      API_PUBLIC_ORIGIN: ${API_PUBLIC_ORIGIN:-https://api.1qrprime.com}
+      ADMIN_ORIGIN: ${ADMIN_ORIGIN:-https://admin.1qrprime.com}
       STORAGE_DRIVER: local
       SESSION_SECRET: ${SERVICE_PASSWORD_64_SESSION}
       SUPPORT_EMAIL: ${SUPPORT_EMAIL:-support@1qrprime.com}
