@@ -1,0 +1,54 @@
+services:
+  api:
+    build:
+      context: .
+      dockerfile: deploy/Dockerfile
+      target: api-runtime
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      DATABASE_DRIVER: postgres
+      DATABASE_PATH: /data/prime.sqlite
+      MEDIA_ROOT: /data/media
+      DATABASE_URL: ${DATABASE_URL:?Set Neon pooled DATABASE_URL}
+      DIRECT_URL: ${DIRECT_URL:-}
+      PUBLIC_ORIGIN: https://1qrprime.com
+      API_PUBLIC_ORIGIN: https://api.1qrprime.com
+      ADMIN_ORIGIN: https://admin.1qrprime.com
+      STORAGE_DRIVER: local
+      SESSION_SECRET: ${SESSION_SECRET:?Set a 32+ character session secret}
+      SUPPORT_EMAIL: ${SUPPORT_EMAIL:?Set support email}
+      SMTP_HOST: ${SMTP_HOST:-smtp.resend.com}
+      SMTP_PORT: ${SMTP_PORT:-465}
+      SMTP_SECURE: ${SMTP_SECURE:-true}
+      SMTP_USER: ${SMTP_USER:-resend}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:?Set Resend SMTP password}
+      SMTP_FROM_NAME: ${SMTP_FROM_NAME:-1QR Prime}
+      SMTP_FROM_EMAIL: ${SMTP_FROM_EMAIL:?Set verified sender email}
+      PG_POOL_MAX: ${PG_POOL_MAX:-10}
+    volumes:
+      - prime-media:/data/media
+    expose:
+      - "3000"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD","node","-e","fetch('http://127.0.0.1:3000/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  web:
+    build:
+      context: .
+      dockerfile: deploy/Dockerfile
+      target: web-runtime
+    depends_on:
+      api:
+        condition: service_healthy
+    expose:
+      - "80"
+    restart: unless-stopped
+
+volumes:
+  prime-media:
