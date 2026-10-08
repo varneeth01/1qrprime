@@ -1,4 +1,4 @@
-import Fastify, { type FastifyRequest } from "fastify";
+import Fastify, { type FastifyInstance, type FastifyRequest } from "fastify";
 import cookie from "@fastify/cookie";
 import cors from "@fastify/cors";
 import helmet from "@fastify/helmet";
@@ -52,7 +52,7 @@ const credentials = z.object({
     .transform((s) => s.toLowerCase()),
   password: z.string().min(12).max(128),
 });
-export async function createApp(db: Db, c: Config, asyncDatabase?: AsyncDatabase) {
+export async function createApp(\n  db: Db,\n  c: Config,\n  asyncDatabase?: AsyncDatabase,\n  existingApp?: FastifyInstance,\n) {
   const app = Fastify({
     logger: c.NODE_ENV !== "test",
     bodyLimit: 1048576,
