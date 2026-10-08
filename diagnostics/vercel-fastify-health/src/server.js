@@ -1,10 +1,8 @@
 import Fastify from "fastify";
 
-const app = Fastify({ logger: true });
+const fastify = Fastify({ logger: true });
 
-app.get("/api/health", async () => ({ ok: true }));
+fastify.get("/", async () => ({ hello: "world" }));
+fastify.get("/api/health", async () => ({ ok: true }));
 
-await app.listen({
-  port: Number(process.env.PORT || 3000),
-  host: "0.0.0.0",
-});
+fastify.listen({ port: 3000 });
