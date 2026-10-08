@@ -16,15 +16,15 @@ services:
       API_PUBLIC_ORIGIN: https://api.1qrprime.com
       ADMIN_ORIGIN: https://admin.1qrprime.com
       STORAGE_DRIVER: local
-      SESSION_SECRET: ${SESSION_SECRET:?Set a 32+ character session secret}
-      SUPPORT_EMAIL: ${SUPPORT_EMAIL:?Set support email}
+      SESSION_SECRET: ${SERVICE_PASSWORD_64_SESSION}
+      SUPPORT_EMAIL: ${SUPPORT_EMAIL:-support@1qrprime.com}
       SMTP_HOST: ${SMTP_HOST:-smtp.resend.com}
       SMTP_PORT: ${SMTP_PORT:-465}
       SMTP_SECURE: ${SMTP_SECURE:-true}
       SMTP_USER: ${SMTP_USER:-resend}
       SMTP_PASSWORD: ${SMTP_PASSWORD:?Set Resend SMTP password}
       SMTP_FROM_NAME: ${SMTP_FROM_NAME:-1QR Prime}
-      SMTP_FROM_EMAIL: ${SMTP_FROM_EMAIL:?Set verified sender email}
+      SMTP_FROM_EMAIL: ${SMTP_FROM_EMAIL:-noreply@1qrprime.com}
       PG_POOL_MAX: ${PG_POOL_MAX:-10}
     volumes:
       - prime-media:/data/media
