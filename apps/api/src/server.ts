@@ -1,4 +1,3 @@
-import Fastify from "fastify";
 import { config } from "./config.js";
 import type { Db } from "./db.js";
 import { fileURLToPath } from "node:url";
@@ -50,27 +49,18 @@ try {
       process.exit(0);
     });
 } catch (error) {
-  console.error({ err: error, bootstrapStage }, "1QR API bootstrap failed");
-
-  // Fail closed while keeping health/readiness observable. No product routes
-  // are exposed when bootstrap fails.
-  const fallback = Fastify({ logger: true });
-  fallback.get("/api/health", async (_request, reply) =>
-    reply.code(503).send({ ok: false, bootstrap: false, stage: bootstrapStage }),
+  console.error(
+    {
+      bootstrapStage,
+      NODE_ENV: process.env.NODE_ENV,
+      DATABASE_DRIVER: process.env.DATABASE_DRIVER,
+      STORAGE_DRIVER: process.env.STORAGE_DRIVER,
+      PUBLIC_ORIGIN: process.env.PUBLIC_ORIGIN,
+      API_PUBLIC_ORIGIN: process.env.API_PUBLIC_ORIGIN,
+      ADMIN_ORIGIN: process.env.ADMIN_ORIGIN,
+      error,
+    },
+    "1QR API bootstrap failed",
   );
-  fallback.get("/api/ready", async (_request, reply) =>
-    reply.code(503).send({
-      ok: false,
-      database: false,
-      bootstrap: false,
-      stage: bootstrapStage,
-    }),
-  );
-  fallback.setNotFoundHandler((_request, reply) =>
-    reply.code(503).send({ error: "Service unavailable", stage: bootstrapStage }),
-  );
-  await fallback.listen({
-    port: Number(process.env.PORT || 3001),
-    host: "0.0.0.0",
-  });
+  throw error;
 }
