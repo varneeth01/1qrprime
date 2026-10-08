@@ -53,7 +53,7 @@ const credentials = z.object({
   password: z.string().min(12).max(128),
 });
 export async function createApp(\n  db: Db,\n  c: Config,\n  asyncDatabase?: AsyncDatabase,\n  existingApp?: FastifyInstance,\n) {
-  const app = Fastify({
+  const app = existingApp ?? Fastify({
     logger: c.NODE_ENV !== "test",
     bodyLimit: 1048576,
     trustProxy: false,
