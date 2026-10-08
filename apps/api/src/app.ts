@@ -1125,6 +1125,7 @@ export async function createApp(db: Db, c: Config, asyncDatabase?: AsyncDatabase
       b = z
         .object({ password: z.string(), confirmation: z.literal("DELETE") })
         .parse(r.body);
+    const argon2 = await import("argon2");
     if (!(await argon2.verify(u.password, b.password)))
       fail(401, "Incorrect password");
     await asyncDb.transaction(async (tx) => {
