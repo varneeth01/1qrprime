@@ -124,6 +124,46 @@ function friendlyError(error: unknown) {
   if (/forbidden|permission/i.test(message)) return "You do not have permission to do that.";
   return message || "Something went wrong. Please try again.";
 }
+async function updateLocationRequest(
+  request: (path: string, method?: string, body?: unknown) => Promise<Row>,
+  locationId: string,
+  body: Row,
+) {
+  try {
+    return await request(`/locations/${locationId}`, "PUT", body);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "";
+    if (
+      message !== "Profile changed elsewhere. Refresh before saving." ||
+      typeof body.version !== "number"
+    )
+      throw error;
+
+    const latest = await request(`/locations/${locationId}`);
+    const requestedProfile = body.profile;
+    const mergedProfile =
+      requestedProfile && typeof requestedProfile === "object"
+        ? {
+            ...(latest.profile || {}),
+            ...requestedProfile,
+            ...(requestedProfile.appearance
+              ? {
+                  appearance: {
+                    ...(latest.profile?.appearance || {}),
+                    ...requestedProfile.appearance,
+                  },
+                }
+              : {}),
+          }
+        : requestedProfile;
+
+    return request(`/locations/${locationId}`, "PUT", {
+      ...body,
+      version: latest.version,
+      ...(mergedProfile ? { profile: mergedProfile } : {}),
+    });
+  }
+}
 function Choices({ values, value, onChange }: any) {
   return (
     <View style={s.wrap}>
@@ -373,6 +413,7 @@ export default function App() {
                   <NativePayments
                     key={l.id}
                     l={l}
+                    emailVerified={!!me.emailVerified}
                     request={request}
                     run={run}
                   />
@@ -637,7 +678,7 @@ function CreateLocation({ tenant, request, run, done, token }: any) {
     if (!location) return;
     const profile = { ...location.profile, description, address, phone, orderEnabled: restaurant, orderTypes: restaurant ? ["dine_in", "takeaway"] : ["takeaway"], payAtCounter: true, taxBps: Math.round(Number(tax || 0) * 100), packagingFeePaise: Math.round(Number(packaging || 0) * 100) };
     if (step < 2) { const saved = await request(`/locations/${location.id}/onboarding`, "PATCH", { step: step + 1, name, category, profile }); setLocation(saved); setStep(step + 1); return; }
-    const published = await request(`/locations/${location.id}`, "PUT", { name, category, profile, published: true, version: location.version });
+    const published = await updateLocationRequest(request, location.id, { name, category, profile, published: true, version: location.version });
     setLocation(published);
     setStep(3);
   }
@@ -820,7 +861,7 @@ function NativeProfile({ l, request, run, refresh, token }: any) {
     setAppearance(target, data.url);
   }
   async function save() {
-    await request(`/locations/${l.id}`, "PUT", { name, category, profile, published, version: l.version });
+    await updateLocationRequest(request, l.id, { name, category, profile, published, version: l.version });
     setSaved(true);
     await refresh();
   }
@@ -999,7 +1040,7 @@ function ConfirmPayment({ l, o, request, run, load }: any) {
     </>
   );
 }
-function NativePayments({ l, request, run }: any) {
+function NativePayments({ l, emailVerified, request, run }: any) {
   const [data, setData] = useState<Row>({ routes: [] }),
     [name, setName] = useState(""),
     [vpa, setVpa] = useState(""),
@@ -1024,6 +1065,15 @@ function NativePayments({ l, request, run }: any) {
         route; existing attempts retain their original destination. Switching
         cannot fix payer-side bank failures.
       </Hint>
+      {!emailVerified && l.role === "owner" && (
+        <Card>
+          <Text style={s.itemTitle}>Verify your email first</Text>
+          <Hint>
+            Production blocks new payment destinations until the owner email is
+            verified. Open Account & plan to send a verification link.
+          </Hint>
+        </Card>
+      )}
       {data.routes.map((r: Row) => (
         <Card key={r.id}>
           <Text style={s.itemTitle}>{r.label}</Text>
@@ -1082,8 +1132,11 @@ function NativePayments({ l, request, run }: any) {
           <Input title="Payee name" value={payee} onChangeText={setPayee} />
           <Button
             title="Save draft route"
+            disabled={!emailVerified}
             onPress={() =>
               run(async () => {
+                if (!emailVerified)
+                  throw Error("Verify your email before adding payment destinations.");
                 await request(`/locations/${l.id}/routes`, "POST", {
                   label: name,
                   vpa,
