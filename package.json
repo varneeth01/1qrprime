@@ -1,1 +1,34 @@
-{"name":"1qr-prime","version":"0.1.0","private":true,"type":"module","workspaces":["apps/*"],"scripts":{"dev":"concurrently -n api,web 'npm run dev -w apps/api' 'npm run dev -w apps/web'","dev:share":"node scripts/preview-public.mjs","preview:check":"node scripts/preview-origin-check.mjs","runtime:check":"node scripts/runtime-loopback-check.mjs","deploy:check":"node scripts/deploy-check.mjs","db:inventory":"node scripts/db-call-inventory.mjs","db:postgres:migrate":"node scripts/postgres-migrate.mjs","db:migrate:sqlite-to-postgres":"node scripts/sqlite-to-postgres.mjs","db:backup":"node scripts/db-backup.mjs","db:restore":"node scripts/db-restore.mjs","build":"npm run build -w apps/api && npm run build -w apps/web","build:web":"npm run build -w apps/web","build:api":"npm run build -w apps/api","test":"npm run test -w apps/api","typecheck":"npm run typecheck --workspaces --if-present","seed:restaurant":"tsx scripts/seed-restaurant.ts"},"devDependencies":{"@axe-core/playwright":"^4.13.0","@types/node":"latest","concurrently":"latest","prettier":"^3.9.9","typescript":"latest"}}
+{
+  "name": "1qr-prime",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "workspaces": [
+    "apps/*"
+  ],
+  "scripts": {
+    "dev": "concurrently -n api,web 'npm run dev -w apps/api' 'npm run dev -w apps/web'",
+    "dev:share": "node scripts/preview-public.mjs",
+    "preview:check": "node scripts/preview-origin-check.mjs",
+    "runtime:check": "node scripts/runtime-loopback-check.mjs",
+    "deploy:check": "node scripts/deploy-check.mjs",
+    "db:inventory": "node scripts/db-call-inventory.mjs",
+    "db:postgres:migrate": "node scripts/postgres-migrate.mjs",
+    "db:migrate:sqlite-to-postgres": "node scripts/sqlite-to-postgres.mjs",
+    "db:backup": "node scripts/db-backup.mjs",
+    "db:restore": "node scripts/db-restore.mjs",
+    "build": "npm run build -w apps/api && npm run build -w apps/web",
+    "build:web": "npm run build -w apps/web",
+    "build:api": "npm run build -w apps/api",
+    "test": "npm run test -w apps/api",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "seed:restaurant": "tsx scripts/seed-restaurant.ts"
+  },
+  "devDependencies": {
+    "@axe-core/playwright": "^4.13.0",
+    "@types/node": "latest",
+    "concurrently": "latest",
+    "prettier": "^3.9.9",
+    "typescript": "6.0.3"
+  }
+}
