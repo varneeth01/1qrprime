@@ -6,7 +6,7 @@ import rateLimit from "@fastify/rate-limit";
 import multipart from "@fastify/multipart";
 import { randomUUID, randomBytes, createHash } from "node:crypto";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { dirname, join, resolve } from "node:path";
+import { join, resolve } from "node:path";
 import { z, ZodError } from "zod";
 import QRCode from "qrcode";
 import { sendMail } from "./mail.js";
@@ -61,9 +61,9 @@ export async function createApp(
     Fastify({
       logger: c.NODE_ENV !== "test",
       bodyLimit: 1048576,
-      trustProxy: false,
+      trustProxy: c.NODE_ENV === "production" && !process.env.VERCEL,
     });
-  const localMediaRoot = resolve(dirname(c.DATABASE_PATH), "uploads");
+  const localMediaRoot = resolve(c.MEDIA_ROOT);
   if (c.STORAGE_DRIVER === "local") mkdirSync(localMediaRoot, { recursive: true });
   await app.register(cookie);
   const browserOrigins = new Set([c.PUBLIC_ORIGIN, c.ADMIN_ORIGIN]);
