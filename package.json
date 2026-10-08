@@ -13,6 +13,7 @@
     "runtime:check": "node scripts/runtime-loopback-check.mjs",
     "deploy:check": "node scripts/deploy-check.mjs",
     "production:smoke": "node scripts/production-smoke.mjs",
+    "diagnose:api:production": "node scripts/local-production-bootstrap.mjs",
     "db:inventory": "node scripts/db-call-inventory.mjs",
     "db:postgres:migrate": "node scripts/postgres-migrate.mjs",
     "db:migrate:sqlite-to-postgres": "node scripts/sqlite-to-postgres.mjs",

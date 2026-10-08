@@ -9,9 +9,7 @@ import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { z, ZodError } from "zod";
 import QRCode from "qrcode";
-import { put as putBlob } from "@vercel/blob";
 import { sendMail } from "./mail.js";
-import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
 import { type Db } from "./db.js";
 import { createSqliteDatabase, type AsyncDatabase, type DbTransaction } from "./async-db.js";
 import { AuthRepository } from "./repositories/auth-repository.js";
@@ -648,6 +646,7 @@ export async function createApp(db: Db, c: Config, asyncDatabase?: AsyncDatabase
       return { url: `${c.PUBLIC_ORIGIN}/api/media/${key}` };
     }
     if (c.STORAGE_DRIVER === "vercel-blob") {
+      const { put: putBlob } = await import("@vercel/blob");
       const blob = await putBlob(`businesses/${l.id}/media/${id()}.webp`, image, {
         access: "public",
         addRandomSuffix: false,
@@ -657,6 +656,7 @@ export async function createApp(db: Db, c: Config, asyncDatabase?: AsyncDatabase
       await auditAsync(u.id, l.tenant_id, "image.uploaded", l.id, { key: blob.pathname, driver: "vercel-blob" });
       return { url: blob.url };
     }
+    const { S3Client, PutObjectCommand } = await import("@aws-sdk/client-s3");
     await new S3Client({
       region: c.AWS_REGION,
       endpoint: c.S3_ENDPOINT,

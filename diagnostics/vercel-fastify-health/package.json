@@ -1,0 +1,8 @@
+{
+  "name": "1qrprime-vercel-fastify-health-diagnostic",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "fastify": "5.12.5"
+  }
+}

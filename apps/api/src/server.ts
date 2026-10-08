@@ -1,7 +1,5 @@
 import { config } from "./config.js";
 import type { Db } from "./db.js";
-import { fileURLToPath } from "node:url";
-import { existsSync } from "node:fs";
 
 let bootstrapStage = "configuration";
 try {
@@ -15,18 +13,8 @@ try {
     db = openDb(c.DATABASE_PATH);
   }
   bootstrapStage = "application";
-  const [{ createApp }, { default: fastifyStatic }] = await Promise.all([
-    import("./app.js"),
-    import("@fastify/static"),
-  ]);
+  const { createApp } = await import("./app.js");
   const app = await createApp(db as Db, c, postgres);
-  const web = fileURLToPath(new URL("../../web/dist/", import.meta.url));
-  if (existsSync(web)) {
-    await app.register(fastifyStatic, { root: web });
-    app.setNotFoundHandler((r, reply) =>
-      r.url.startsWith("/api/") ? reply.code(404).send({ error: "Not found" }) : reply.sendFile("index.html"),
-    );
-  }
   bootstrapStage = "listen";
   await app.listen({ port: c.PORT, host: "0.0.0.0" });
   for (const signal of ["SIGINT", "SIGTERM"])
