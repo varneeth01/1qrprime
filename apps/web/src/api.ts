@@ -1,3 +1,17 @@
+export type Any = Record<string, any>;
+
+export class ApiError extends Error {
+  status: number;
+  data: Any;
+
+  constructor(message: string, status: number, data: Any = {}) {
+    super(message);
+    this.name = "ApiError";
+    this.status = status;
+    this.data = data;
+  }
+}
+
 export async function api(
   path: string,
   method = "GET",
@@ -13,13 +27,69 @@ export async function api(
     },
     body: body ? JSON.stringify(body) : undefined,
   });
-  const data = await res.json();
-  if (!res.ok) throw new Error(data.error || "Connection failed");
+
+  const raw = await res.text();
+  let data: Any = {};
+  if (raw) {
+    try {
+      data = JSON.parse(raw);
+    } catch {
+      data = { error: raw };
+    }
+  }
+
+  if (!res.ok)
+    throw new ApiError(data.error || "Connection failed", res.status, data);
   return data;
 }
+
+export async function updateLocation(
+  locationId: string,
+  body: Any,
+) {
+  try {
+    return await api(`/locations/${locationId}`, "PUT", body);
+  } catch (error) {
+    if (
+      !(error instanceof ApiError) ||
+      error.status !== 409 ||
+      error.data?.error !== "Profile changed elsewhere. Refresh before saving." ||
+      typeof body?.version !== "number"
+    )
+      throw error;
+
+    // The dashboard can retain a location snapshot for a moment after another
+    // successful save. Refresh once, preserve server-side profile fields that
+    // this form does not own, then retry with the current optimistic-lock version.
+    const latest = await api(`/locations/${locationId}`);
+    const requestedProfile = body.profile;
+    const mergedProfile =
+      requestedProfile && typeof requestedProfile === "object"
+        ? {
+            ...(latest.profile || {}),
+            ...requestedProfile,
+            ...(requestedProfile.appearance
+              ? {
+                  appearance: {
+                    ...(latest.profile?.appearance || {}),
+                    ...requestedProfile.appearance,
+                  },
+                }
+              : {}),
+          }
+        : requestedProfile;
+
+    return api(`/locations/${locationId}`, "PUT", {
+      ...body,
+      version: latest.version,
+      ...(mergedProfile ? { profile: mergedProfile } : {}),
+    });
+  }
+}
+
 export const money = (paise: number) =>
   new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR" }).format(
     paise / 100,
   );
+
 export const label = (s: string) => s.replaceAll("_", " ");
-export type Any = Record<string, any>;
