@@ -29,7 +29,7 @@ test("durable migrations and records survive closing the database", () => {
     );
     assert.equal(
       (db.prepare("SELECT count(*) n FROM migrations").get() as any).n,
-      7,
+      8,
     );
     db.close();
   } finally {
@@ -201,6 +201,44 @@ test("public endpoints cannot forge payment outcomes or access unpublished data"
     assert.equal(
       (await app.inject({ url: "/api/admin/plans" })).statusCode,
       401,
+    );
+  } finally {
+    await app.close();
+    db.close();
+  }
+});
+
+test("plan catalog exposes Prime pricing and owner selection is persisted", async () => {
+  const db = openDb(":memory:"),
+    app = await createApp(db, cfg);
+  try {
+    const registration = await app.inject({
+      method: "POST",
+      url: "/api/auth/register",
+      headers: { "x-client": "native" },
+      payload: {
+        email: `plan-${randomUUID()}@example.test`,
+        password: "long plan selection password",
+        name: "Plan test",
+      },
+    });
+    assert.equal(registration.statusCode, 200);
+    const plans = await app.inject({ url: "/api/plans" });
+    assert.equal(plans.statusCode, 200);
+    const prime = plans.json().find((p: any) => p.id === "prime");
+    assert.equal(prime.price_paise, 59900);
+    assert.equal(prime.billing_interval, "month");
+    const tenant = db.prepare("SELECT id FROM tenants").get() as any;
+    const selected = await app.inject({
+      method: "PUT",
+      url: `/api/tenants/${tenant.id}/plan`,
+      headers: { authorization: `Bearer ${registration.json().token}` },
+      payload: { planId: "prime" },
+    });
+    assert.equal(selected.statusCode, 200);
+    assert.equal(
+      (db.prepare("SELECT plan_id FROM tenants WHERE id=?").get(tenant.id) as any).plan_id,
+      "prime",
     );
   } finally {
     await app.close();

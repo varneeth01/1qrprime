@@ -168,7 +168,8 @@ export async function createApp(
     return { ...u, role: m.role };
   };
   const asyncEnt = async (tenant: string) => {
-    const t = await asyncDb.get<any>("SELECT t.*,p.entitlements,p.name plan_name FROM tenants t JOIN plans p ON p.id=t.plan_id WHERE t.id=?", [tenant]);
+    const t = await asyncDb.get<any>("SELECT t.*,p.entitlements,p.name plan_name,p.price_paise plan_price_paise FROM tenants t JOIN plans p ON p.id=t.plan_id WHERE t.id=?", [tenant]);
+    if (t) t.billing_interval = "month";
     if (!t) fail(404, "Business not found");
     return { ...t, entitlements: JSON.parse(t.entitlements) };
   };
@@ -231,6 +232,12 @@ export async function createApp(
     temporaryPreview: /\.trycloudflare\.com$/i.test(new URL(c.PUBLIC_ORIGIN).hostname),
   }));
   app.get("/api/templates", async () => templates);
+  app.get("/api/plans", async () => {
+    const plans = await asyncDb.all<any>(
+      "SELECT id,name,entitlements,price_paise,active,display_order,recommended FROM plans WHERE active IS TRUE ORDER BY display_order,id",
+    );
+    return plans.map((p) => ({ ...p, entitlements: JSON.parse(p.entitlements), billing_interval: "month" }));
+  });
   const newSession = async (userId: string, r: FastifyRequest, reply: any) => {
     const token = secret();
     await authRepository.createSession(asyncDb, hash(token), userId, Date.now() + 7 * 86400000);
@@ -369,6 +376,18 @@ export async function createApp(
       locations: await Promise.all(locations.map(asyncView)),
       billing: billingCapabilities,
     };
+  });
+  app.put("/api/tenants/:tid/plan", async (r) => {
+    const tid = (r.params as any).tid;
+    const u = await membership(r, tid, ["owner"]);
+    const b = z.object({ planId: z.string().regex(/^[a-z_]{2,30}$/) }).parse(r.body);
+    const plan = await asyncDb.get<any>("SELECT id FROM plans WHERE id=? AND active=1", [b.planId]);
+    if (!plan) fail(400, "That plan is not available");
+    await asyncDb.transaction(async (tx) => {
+      await tx.run("UPDATE tenants SET plan_id=?,billing_state=? WHERE id=?", [b.planId, "free", tid]);
+      await authRepository.audit(tx, u.id, tid, "plan.selected", tid, { planId: b.planId, activation: "pending" });
+    });
+    return { ok: true, planId: b.planId, billingState: "free" };
   });
   app.post("/api/locations", async (r) => {
     const b = z

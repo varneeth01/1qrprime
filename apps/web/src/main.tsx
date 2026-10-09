@@ -64,7 +64,8 @@ const browserOrigin = window.location.origin;
 const localOrigin = /^(localhost|127\.0\.0\.1|0\.0\.0\.0)$/i.test(window.location.hostname);
 const temporaryPreviewOrigin = /\.trycloudflare\.com$/i.test(window.location.hostname);
 function EnvironmentBadge() {
-  return localOrigin ? <Badge>LOCAL</Badge> : temporaryPreviewOrigin ? <Badge tone="amber">PREVIEW</Badge> : <Badge tone="green">STAGING</Badge>;
+  const production = window.location.hostname === "1qrprime.com" || window.location.hostname === "www.1qrprime.com";
+  return localOrigin ? <Badge>LOCAL</Badge> : temporaryPreviewOrigin ? <Badge tone="amber">PREVIEW</Badge> : production ? <Badge tone="green">PRODUCTION</Badge> : <Badge tone="green">STAGING</Badge>;
 }
 function Empty({ title, children }: any) {
   return (
@@ -74,6 +75,9 @@ function Empty({ title, children }: any) {
       <p>{children}</p>
     </div>
   );
+}
+function Skeleton({ className = "" }: { className?: string }) {
+  return <div aria-hidden="true" className={`skeleton ${className}`} />;
 }
 function Brand() {
   return (
@@ -255,7 +259,7 @@ function App() {
   }
   if (["/privacy", "/support"].includes(pathname))
     return <Policy support={pathname === "/support"} />;
-  if (loading) return <div className="loading">Opening 1QR Prime…</div>;
+  if (loading) return <div className="boot-screen"><Brand /><Skeleton className="boot-line" /><p>Preparing your workspace</p></div>;
   if (!me) return <Auth done={refresh} />;
   const l = me.locations.find((x: Any) => x.id === lid),
     tenant =
@@ -640,8 +644,11 @@ function NewLocation({ me, done, initial }: any) {
     [packaging, setPackaging] = useState(String((initial?.profile?.packagingFeePaise || 0) / 100)),
     [itemName, setItemName] = useState(""),
     [itemPrice, setItemPrice] = useState(""),
+    [plans, setPlans] = useState<Any[]>([]),
+    [planId, setPlanId] = useState(initial?.plan_id || "prime"),
     [error, setError] = useState(""),
     [busy, setBusy] = useState(false);
+  useEffect(() => { api("/plans").then((value) => setPlans(value as Any[])).catch(() => setPlans([])); }, []);
   const restaurant = ["restaurant", "cafe", "cloud_kitchen"].includes(category);
   const profile = () => ({
     ...(draft?.profile || {}), description, address, phone, hours,
@@ -676,10 +683,11 @@ function NewLocation({ me, done, initial }: any) {
     } catch (e) { setError((e as Error).message); } finally { setBusy(false); }
   }
   async function publish() {
-    const updated = await save(5, false);
+    const updated = await save(6, false);
     if (!updated) return;
     setBusy(true); setError("");
     try {
+      await api(`/tenants/${updated.tenant_id}/plan`, "PUT", { planId });
       const live = await updateLocation(updated.id, { name, category, profile: profile(), published: true, version: updated.version });
       setDraft(live); setStep(6);
     } catch (e) { setError((e as Error).message); } finally { setBusy(false); }
@@ -687,16 +695,17 @@ function NewLocation({ me, done, initial }: any) {
   if (step >= 6 && draft) return <section className="card onboarding-success narrow"><Badge tone="green">LIVE</Badge><h1>Your business is live 🎉</h1><p>Print or share this QR anywhere. Your menu, payment details and business information can change later without replacing it.</p><img className="qr-image" src={`/api/locations/${draft.id}/qr?format=svg&kind=page`} alt={`${name} permanent QR`} /><p className="public-link">{location.origin}/q/{draft.publicId}</p><div className="button-row"><a className="button primary" href={`/api/locations/${draft.id}/qr?format=png&kind=page`} download>Download QR</a><a className="button secondary" href={`/q/${draft.publicId}`} target="_blank" rel="noreferrer">View Customer Page</a><button className="secondary" onClick={done}>Go to Dashboard</button></div></section>;
   return <section className="card narrow onboarding-card">
     <div className="onboarding-progress"><Badge>STEP {Math.min(step + 1, 6)} OF 6</Badge><span>{name || "New business"}</span></div>
-    <h1>{step === 0 ? "Let's set up your business" : step === 1 ? "Tell customers about you" : step === 2 ? "Configure your experience" : step === 3 ? "Add your menu" : "Preview your 1QR page"}</h1>
-    <p>{step === 0 ? "Create your business profile and your permanent 1QR." : step === 3 ? "Add a few items now, or skip and finish your menu later." : "Your progress is saved automatically."}</p><ErrorBox error={error} />
+    <h1>{step === 0 ? "Let's set up your business" : step === 1 ? "Tell customers about you" : step === 2 ? "Configure your experience" : step === 3 ? "Add your menu" : step === 4 ? "Choose your plan" : "Preview your 1QR page"}</h1>
+    <p>{step === 0 ? "Create your business profile and your permanent 1QR." : step === 3 ? "Add a few items now, or skip and finish your menu later." : step === 4 ? "Every new workspace starts with a clear plan decision. Billing activation remains separate." : "Your progress is saved automatically."}</p><ErrorBox error={error} />
     {step === 0 && <><Field title="Business name" value={name} onChange={(e: any) => setName(e.target.value)} required /><Field title="Permanent page URL" value={slug} onChange={(e: any) => setSlug(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, "-"))} required pattern="[a-z0-9]+(-[a-z0-9]+)*" /><label className="field"><span>Business category</span><select value={category} onChange={(e) => setCategory(e.target.value)}>{[["restaurant", "Restaurant"], ["cafe", "Cafe"], ["cloud_kitchen", "Cloud Kitchen"], ["retail", "Retail Store"], ["salon", "Salon"], ["clinic", "Clinic"], ["hotel", "Hotel"], ["professional_services", "Professional Services"], ["generic", "Other"]].map(([v, t]) => <option key={v} value={v}>{t}</option>)}</select></label></>}
     {step === 1 && <><Field title="Description" value={description} onChange={(e: any) => setDescription(e.target.value)} /><Field title="Phone number" value={phone} onChange={(e: any) => setPhone(e.target.value)} inputMode="tel" /><Field title="Address" value={address} onChange={(e: any) => setAddress(e.target.value)} /><Field title="Opening hours" value={hours} onChange={(e: any) => setHours(e.target.value)} /></>}
     {step === 2 && restaurant && <><label className="check"><input type="checkbox" checked readOnly /> Accept restaurant orders</label><label className="check"><input type="checkbox" checked readOnly /> Dine-in</label><label className="check"><input type="checkbox" checked readOnly /> Takeaway</label><Field title="Tax (%)" type="number" min="0" max="30" step="0.01" value={tax} onChange={(e: any) => setTax(e.target.value)} /><Field title="Packaging fee (₹)" type="number" min="0" step="1" value={packaging} onChange={(e: any) => setPackaging(e.target.value)} /></>}
     {step === 2 && !restaurant && <div className="empty"><h3>Your category is ready</h3><p>Configure links, payments and services later from your dashboard.</p></div>}
     {step === 3 && restaurant && <><div className="onboarding-menu-list">{draft?.items?.map((i: Any) => <div className="list-row" key={i.id}><span>{i.name}</span><strong>{money(i.price_paise)}</strong></div>)}</div><div className="two-fields"><Field title="Item name" value={itemName} onChange={(e: any) => setItemName(e.target.value)} /><Field title="Price (₹)" type="number" value={itemPrice} onChange={(e: any) => setItemPrice(e.target.value)} /></div><button className="secondary" type="button" onClick={addItem} disabled={busy || !itemName || !itemPrice}>Add item</button><small>Customers cannot order until an available item exists. You can skip this step for a browse-only page.</small></>}
     {step === 3 && !restaurant && <p>Skip to publish your business page.</p>}
-    {step === 4 && <><div className="preview-panel"><Badge>{label(category)}</Badge><h2>{name}</h2><p>{description || "Your description will appear here."}</p><p>{address || "Add your address later from Business page."}</p></div><a className="button secondary" href={draft?.publicId ? `/q/${draft.publicId}` : "#"} target="_blank" rel="noreferrer">Preview as Customer <ArrowUpRight size={16} /></a></>}
-    <div className="button-row onboarding-actions">{step > 0 && <button className="secondary" onClick={() => setStep(step - 1)} disabled={busy}>Back</button>}{step < 4 && <button className="primary" onClick={() => save(step + 1)} disabled={busy || (step === 0 && (!name || !slug))}>{busy ? "Saving…" : "Next"} <ArrowUpRight size={16} /></button>}{step === 4 && <button className="primary" onClick={publish} disabled={busy}>{busy ? "Publishing…" : "Publish Business"}</button>}</div>
+    {step === 4 && <div className="plan-grid">{(plans.length ? plans : [{ id: "prime", name: "Prime", price_paise: 59900, entitlements: { locations: 10, staff: 20, orders: true, analytics: true, modules: true }, recommended: true }]).map((plan: Any) => <button type="button" key={plan.id} className={`plan-card ${planId === plan.id ? "selected" : ""}`} onClick={() => setPlanId(plan.id)}><span className="plan-card-top"><Badge tone={plan.recommended ? "green" : ""}>{plan.recommended ? "RECOMMENDED" : "PLAN"}</Badge>{planId === plan.id && <Check size={18} />}</span><strong>{plan.name}</strong><span className="plan-price">{plan.price_paise ? money(plan.price_paise) : "Custom"}<small>/ month</small></span><small>{plan.entitlements?.locations} locations · {plan.entitlements?.staff} staff · analytics included</small></button>)}</div>}
+    {step === 5 && <><div className="preview-panel"><Badge>{label(category)}</Badge><h2>{name}</h2><p>{description || "Your description will appear here."}</p><p>{address || "Add your address later from Business page."}</p></div><a className="button secondary" href={draft?.publicId ? `/q/${draft.publicId}` : "#"} target="_blank" rel="noreferrer">Preview as Customer <ArrowUpRight size={16} /></a></>}
+    <div className="button-row onboarding-actions">{step > 0 && <button className="secondary" onClick={() => setStep(step - 1)} disabled={busy}>Back</button>}{step < 5 && <button className="primary" onClick={() => save(step + 1)} disabled={busy || (step === 0 && (!name || !slug))}>{busy ? "Saving…" : "Next"} <ArrowUpRight size={16} /></button>}{step === 5 && <button className="primary" onClick={publish} disabled={busy || !planId}>{busy ? "Publishing…" : "Publish Business"}</button>}</div>
   </section>;
 }
 function Profile({ l, done }: any) {
@@ -1434,7 +1443,9 @@ function Requests({ l }: any) {
 }
 function Payments({ l, emailVerified }: any) {
   const { data, error, load } = usePoll(`/locations/${l.id}/routes`, 15000),
-    [failure, setFailure] = useState("");
+    [failure, setFailure] = useState(""),
+    [verificationRoute, setVerificationRoute] = useState<string | null>(null),
+    [evidence, setEvidence] = useState("");
   async function act(path: string, body: Any = {}) {
     try {
       await api(`/locations/${l.id}/routes/${path}`, "POST", body);
@@ -1496,16 +1507,29 @@ function Payments({ l, emailVerified }: any) {
                 {r.state === "draft" && l.role === "owner" && (
                   <button
                     className="secondary"
-                    onClick={() => {
-                      const evidence = prompt(
-                        "Enter a reference to your merchant ownership evidence. Do not include bank passwords, PINs or full account numbers.",
-                      );
-                      if (evidence)
-                        act(`${r.id}/request-verification`, { evidence });
-                    }}
+                    onClick={() => setVerificationRoute(r.id)}
                   >
                     Request verification
                   </button>
+                )}
+                {verificationRoute === r.id && (
+                  <form
+                    className="inline-form"
+                    onSubmit={async (e) => {
+                      e.preventDefault();
+                      if (!evidence.trim()) return;
+                      await act(`${r.id}/request-verification`, { evidence: evidence.trim() });
+                      setEvidence("");
+                      setVerificationRoute(null);
+                    }}
+                  >
+                    <Field title="Verification reference" name="evidence" value={evidence} onChange={(e: any) => setEvidence(e.target.value)} placeholder="Reference checked ownership evidence" required />
+                    <small>Do not include bank passwords, PINs or full account numbers.</small>
+                    <div className="button-row">
+                      <button className="primary" type="submit">Submit for review</button>
+                      <button className="text-button" type="button" onClick={() => setVerificationRoute(null)}>Cancel</button>
+                    </div>
+                  </form>
                 )}
                 {r.state === "verified" && (
                   <button
@@ -1580,7 +1604,7 @@ function Payments({ l, emailVerified }: any) {
               verify merchant ownership before activation.
             </p>
             <button className="primary" disabled={!emailVerified}>
-              Save draft <Plus size={16} />
+              Submit payment destination <Plus size={16} />
             </button>
           </form>
         )}
@@ -1813,12 +1837,13 @@ function Staff({ l }: any) {
   );
 }
 function SettingsPage({ tenant, go, refresh }: any) {
-  const [error, setError] = useState("");
+  const [error, setError] = useState(""), [notice, setNotice] = useState("");
   return (
     <div className="two-columns">
       <section className="card">
         <Badge>{label(tenant.billing_state)}</Badge>
         <h2>{tenant.plan_name}</h2>
+        {tenant.plan_price_paise ? <p className="plan-summary-price">{money(tenant.plan_price_paise)} <small>/ month</small></p> : null}
         <p>
           {tenant.entitlements.locations} location(s) ·{" "}
           {tenant.entitlements.staff} staff seats
@@ -1835,9 +1860,7 @@ function SettingsPage({ tenant, go, refresh }: any) {
           onClick={async () => {
             try {
               await api("/auth/request-verification", "POST");
-              alert(
-                "Verification email sent. Check your inbox (and spam folder) for the verification link.",
-              );
+              setNotice("Verification email sent. Check your inbox (and spam folder) for the verification link.");
             } catch (e) {
               setError((e as Error).message);
             }
@@ -1885,6 +1908,7 @@ function SettingsPage({ tenant, go, refresh }: any) {
           Delete my account
         </button>
         <ErrorBox error={error} />
+        {notice && <div className="success" role="status">{notice}</div>}
       </section>
       <section className="card">
         <h2>Built around your business</h2>

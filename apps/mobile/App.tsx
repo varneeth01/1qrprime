@@ -428,7 +428,7 @@ export default function App() {
                     <Card>
                       <Text style={s.itemTitle}>{me.email}</Text>
                       <Hint>
-                        {tenant.plan_name} · {label(tenant.billing_state)}
+                        {tenant.plan_name} {tenant.plan_price_paise ? `· ${money(tenant.plan_price_paise)} / month` : ""} · {label(tenant.billing_state)}
                       </Hint>
                       <Hint>
                         Locations: {tenant.entitlements.locations}. Staff seats:{" "}
@@ -670,8 +670,11 @@ function CreateLocation({ tenant, request, run, done, token }: any) {
     [address, setAddress] = useState(""),
     [phone, setPhone] = useState(""),
     [tax, setTax] = useState("0"),
-    [packaging, setPackaging] = useState("0");
+    [packaging, setPackaging] = useState("0"),
+    [plans, setPlans] = useState<Row[]>([]),
+    [planId, setPlanId] = useState("prime");
   const restaurant = ["restaurant", "cafe", "cloud_kitchen"].includes(category);
+  useEffect(() => { request("/plans").then((value: Row[]) => setPlans(value)).catch(() => {}); }, [request]);
   async function next() {
     if (step === 0) {
       const created = await request("/locations", "POST", { name, slug, category, tenantId: tenant.id });
@@ -679,13 +682,18 @@ function CreateLocation({ tenant, request, run, done, token }: any) {
     }
     if (!location) return;
     const profile = { ...location.profile, description, address, phone, orderEnabled: restaurant, orderTypes: restaurant ? ["dine_in", "takeaway"] : ["takeaway"], payAtCounter: true, taxBps: Math.round(Number(tax || 0) * 100), packagingFeePaise: Math.round(Number(packaging || 0) * 100) };
-    if (step < 2) { const saved = await request(`/locations/${location.id}/onboarding`, "PATCH", { step: step + 1, name, category, profile }); setLocation(saved); setStep(step + 1); return; }
+    if (step < 3) { const saved = await request(`/locations/${location.id}/onboarding`, "PATCH", { step: step + 1, name, category, profile }); setLocation(saved); setStep(step + 1); return; }
+    if (step === 3) {
+      await request(`/tenants/${tenant.id}/plan`, "PUT", { planId });
+      const published = await updateLocationRequest(request, location.id, { name, category, profile, published: true, version: location.version });
+      setLocation(published); setStep(4); return;
+    }
     const published = await updateLocationRequest(request, location.id, { name, category, profile, published: true, version: location.version });
     setLocation(published);
     setStep(3);
   }
-  if (step >= 3 && location) return <Card><Title>Your business is live 🎉</Title><Hint>Print or share this QR anywhere. Your QR stays the same when your menu or details change.</Hint><Image accessibilityLabel="Permanent business QR" source={{ uri: `${API_BASE}/locations/${location.id}/qr?format=png&kind=page`, headers: token ? { Authorization: `Bearer ${token}` } : undefined }} style={{ width: 280, height: 280, alignSelf: "center" }} /><Button title="Go to My QR" onPress={done} /></Card>;
-  return <Card><Text style={s.kicker}>STEP {step + 1} OF 3</Text><Title>{step === 0 ? "Create your first business" : step === 1 ? "Tell customers about you" : "Restaurant setup"}</Title><Hint>Setup is saved as you continue.</Hint>{step === 0 && <><Input title="Business name" value={name} onChangeText={setName} /><Input title="Permanent URL slug" autoCapitalize="none" value={slug} onChangeText={setSlug} /><Hint>Printed QR codes keep this URL.</Hint><Choices values={["restaurant", "cafe", "cloud_kitchen", "retail", "salon", "clinic", "hotel", "professional_services", "generic"]} value={category} onChange={setCategory} /></>}{step === 1 && <><Input title="Description" value={description} onChangeText={setDescription} /><Input title="Phone" value={phone} onChangeText={setPhone} keyboardType="phone-pad" /><Input title="Address" value={address} onChangeText={setAddress} /></>}{step === 2 && restaurant && <><Hint>Ordering is enabled with dine-in and takeaway defaults.</Hint><Input title="Tax percent" value={tax} onChangeText={setTax} keyboardType="decimal-pad" /><Input title="Packaging fee in rupees" value={packaging} onChangeText={setPackaging} keyboardType="decimal-pad" /></>}{step === 2 && !restaurant && <Hint>Your category page is ready. You can add actions and payments after publishing.</Hint>}<Button title={step === 2 ? "Publish Business" : "Continue"} onPress={() => run(next)} disabled={step === 0 && (!name || !slug)} /></Card>;
+  if (step >= 4 && location) return <Card><Title>Your business is live 🎉</Title><Hint>Print or share this QR anywhere. Your QR stays the same when your menu or details change.</Hint><Image accessibilityLabel="Permanent business QR" source={{ uri: `${API_BASE}/locations/${location.id}/qr?format=png&kind=page`, headers: token ? { Authorization: `Bearer ${token}` } : undefined }} style={{ width: 280, height: 280, alignSelf: "center" }} /><Button title="Go to My QR" onPress={done} /></Card>;
+  return <Card><Text style={s.kicker}>STEP {step + 1} OF 4</Text><Title>{step === 0 ? "Create your first business" : step === 1 ? "Tell customers about you" : step === 2 ? "Restaurant setup" : "Choose your plan"}</Title><Hint>Setup is saved as you continue.</Hint>{step === 0 && <><Input title="Business name" value={name} onChangeText={setName} /><Input title="Permanent URL slug" autoCapitalize="none" value={slug} onChangeText={setSlug} /><Hint>Printed QR codes keep this URL.</Hint><Choices values={["restaurant", "cafe", "cloud_kitchen", "retail", "salon", "clinic", "hotel", "professional_services", "generic"]} value={category} onChange={setCategory} /></>}{step === 1 && <><Input title="Description" value={description} onChangeText={setDescription} /><Input title="Phone" value={phone} onChangeText={setPhone} keyboardType="phone-pad" /><Input title="Address" value={address} onChangeText={setAddress} /></>}{step === 2 && restaurant && <><Hint>Ordering is enabled with dine-in and takeaway defaults.</Hint><Input title="Tax percent" value={tax} onChangeText={setTax} keyboardType="decimal-pad" /><Input title="Packaging fee in rupees" value={packaging} onChangeText={setPackaging} keyboardType="decimal-pad" /></>}{step === 2 && !restaurant && <Hint>Your category page is ready. You can add actions and payments after publishing.</Hint>}{step === 3 && <>{(plans.length ? plans : [{ id: "prime", name: "Prime", price_paise: 59900, entitlements: { locations: 10, staff: 20 } }]).map((plan) => <Pressable key={plan.id} onPress={() => setPlanId(plan.id)} style={[s.planChoice, planId === plan.id && s.planChoiceSelected]}><Text style={s.itemTitle}>{plan.name}</Text><Text style={s.price}>{money(plan.price_paise)} / month</Text><Hint>{plan.entitlements?.locations} locations · {plan.entitlements?.staff} staff seats</Hint></Pressable>)}</>}{<Button title={step === 3 ? "Publish Business" : "Continue"} onPress={() => run(next)} disabled={(step === 0 && (!name || !slug)) || (step === 3 && !planId)} />}</Card>;
 }
 function OwnerPortfolio({ me, request, setLid, setTab }: any) {
   const [metrics, setMetrics] = useState<Record<string, Row>>({});
@@ -1133,7 +1141,7 @@ function NativePayments({ l, emailVerified, request, run }: any) {
           />
           <Input title="Payee name" value={payee} onChangeText={setPayee} />
           <Button
-            title="Save draft route"
+            title="Submit payment destination"
             disabled={!emailVerified}
             onPress={() =>
               run(async () => {
@@ -1269,6 +1277,8 @@ const s = StyleSheet.create({
     borderColor: "rgba(255,255,255,0.1)",
     marginBottom: 18,
   },
+  planChoice: { padding: 18, borderRadius: 15, borderWidth: 1, borderColor: "rgba(255,255,255,0.1)", backgroundColor: "#171717", marginBottom: 12 },
+  planChoiceSelected: { borderColor: "#dce7b0", backgroundColor: "#171b15" },
   hint: { color: "#aeb4af", fontSize: 13, lineHeight: 21, marginVertical: 8 },
   field: { marginVertical: 9 },
   label: {
