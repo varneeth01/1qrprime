@@ -1,0 +1,54 @@
+--------- beginning of main
+10-09 14:02:00.873  1185  1274 E UnisocWatchdog: UnisocWatchdogImpl sendMessage:0
+10-09 14:02:00.873  1185  1274 E UnisocWatchdog: sendMessage wait ok 
+10-09 14:02:00.874  1185  1364 E UnisocWatchdog: UNISOCWATCHDOG_MESSAGE_TIMER30 trigger
+10-09 14:02:01.834 23724 23960 E phonemaster_log: Web_: deleteAllData failed 
+10-09 14:02:01.836 23724 23960 E phonemaster_log: Web_: android.database.sqlite.SQLiteConstraintException: NOT NULL constraint failed: MaterielTable.offerName (code 1299 SQLITE_CONSTRAINT_NOTNULL)
+10-09 14:02:02.863  1185  4246 E UnisocWatchdog: UnisocWatchdogImpl sendMessage:12
+10-09 14:02:02.864  1185  4246 E UnisocWatchdog: sendMessage wait ok 
+10-09 14:02:02.876  1185  4246 E UnisocWatchdog: monkeyStatus update:false
+10-09 14:02:05.174 19673 19705 E AbstractLogEventBuilder: The provided ProductIdOrigin 3 is not one of the process-level expected values: 1 or 2
+10-09 14:02:10.548   465   465 E TrustyKeymaster: succeeded to send cmd (4) to com.android.trusty.keymaster with rc(1427). errno: Success
+10-09 14:02:10.549   465   465 E TrustyKeymaster: Getting response size (28)
+10-09 14:02:10.553   465   465 E TrustyKeymaster: succeeded to send cmd (8) to com.android.trusty.keymaster with rc(284). errno: Success
+10-09 14:02:10.554   465   465 E TrustyKeymaster: Getting response size (28)
+10-09 14:02:10.556   465   465 E TrustyKeymaster: succeeded to send cmd (12) to com.android.trusty.keymaster with rc(32). errno: Success
+10-09 14:02:10.588   465   465 E TrustyKeymaster: Getting response size (8)
+10-09 14:02:10.588   465   465 E TrustyKeymaster: Response of size 4 contained error code -1000
+10-09 14:02:10.588   465   465 E trusty_keymaster_hal: Cmd 12 returned error: -1000
+--------- beginning of system
+10-09 14:02:10.589   464 25708 E keystore2: system/security/keystore2/src/error.rs:171 - system/security/keystore2/src/operation.rs:847: KeystoreOperation::finish
+10-09 14:02:10.589   464 25708 E keystore2: 
+10-09 14:02:10.589   464 25708 E keystore2: Caused by:
+10-09 14:02:10.589   464 25708 E keystore2:     0: system/security/keystore2/src/operation.rs:428: Finish failed.
+10-09 14:02:10.589   464 25708 E keystore2:     1: Error::Km(r#UNKNOWN_ERROR)
+10-09 14:02:24.009   660   660 I Zygote  : Process 22705 exited due to signal 9 (Killed)
+10-09 14:02:28.124 24049 24053 E mali_gralloc: initIonKernelMemtrack open device:/dev/systemheap failed, 13(Permission denied)
+10-09 14:02:30.874  1185  1274 E UnisocWatchdog: UnisocWatchdogImpl sendMessage:0
+10-09 14:02:30.875  1185  1274 E UnisocWatchdog: sendMessage wait ok 
+10-09 14:02:30.875  1185  1364 E UnisocWatchdog: UNISOCWATCHDOG_MESSAGE_TIMER30 trigger
+10-09 14:02:34.042 24069 24124 E FeatureFlagsImplExport: android.os.flagging.AconfigStorageReadException: ERROR_PACKAGE_NOT_FOUND: package com.android.libcore cannot be found on the device
+10-09 14:02:45.521   889   975 E SLOGCP  : data_rate_stat: agdsp rate: total size(MB)=0.000000; per second(bytes)=0.000000, drop_cnt_=0, drop_data_size_=0, pollin event times=0.
+10-09 14:02:46.787   463  1099 E android.system.suspend-service: Error opening event_count for wakeup54: Permission denied
+10-09 14:02:46.787   463  1099 E android.system.suspend-service: Error opening max_time_ms for wakeup54: Permission denied
+10-09 14:02:46.788   463  1099 E android.system.suspend-service: Error opening wakeup_count for wakeup54: Permission denied
+10-09 14:02:46.788   463  1099 E android.system.suspend-service: Error opening total_time_ms for wakeup54: Permission denied
+10-09 14:02:46.788   463  1099 E android.system.suspend-service: Error opening expire_count for wakeup54: Permission denied
+10-09 14:02:46.788   463  1099 E android.system.suspend-service: Error opening active_count for wakeup54: Permission denied
+10-09 14:02:46.788   463  1099 E android.system.suspend-service: Error opening last_change_ms for wakeup54: Permission denied
+10-09 14:02:46.788   463  1099 E android.system.suspend-service: Error opening prevent_suspend_time_ms for wakeup54: Permission denied
+10-09 14:02:46.788   463  1099 E android.system.suspend-service: Error opening name for wakeup54: Permission denied
+10-09 14:02:46.788   463  1099 E android.system.suspend-service: Error opening active_time_ms for wakeup54: Permission denied
+10-09 14:02:47.067  1185  4193 E ActivityTaskManager: agaresPreload error: activityInfo is null
+10-09 14:02:47.152  1185  4193 E system_server: No package ID 7f found for resource ID 0x7f010000.
+10-09 14:02:47.152  1185  4193 E system_server: No package ID 7f found for resource ID 0x7f020000.
+10-09 14:02:47.152  1185  4193 E system_server: No package ID 7f found for resource ID 0x7f030000.
+10-09 14:02:47.152  1185  4193 E system_server: No package ID 7f found for resource ID 0x7f040000.
+10-09 14:02:47.152  1185  4193 E system_server: No package ID 7f found for resource ID 0x7f050000.
+10-09 14:02:47.314  1185  4193 E UnisocWatchdog: UnisocWatchdogImpl sendMessage:12
+10-09 14:02:47.314  1185  4193 E UnisocWatchdog: sendMessage wait ok 
+10-09 14:02:47.314  1185  4193 E UnisocWatchdog: monkeyStatus update:false
+10-09 14:02:47.322  1185  1308 E libprocessgroup: set_timerslack_ns write failed: Permission denied
+10-09 14:02:48.480 24175 24175 E unknown:ReactNative: Tried to remove non-existent frame callback
+10-09 14:02:50.717 24230 24231 E mali_gralloc: initIonKernelMemtrack open device:/dev/systemheap failed, 13(Permission denied)
+10-09 14:02:52.308   408   622 E vold    : No permission to read /proc/fs/data_state/fragment_state

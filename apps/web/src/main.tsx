@@ -1598,7 +1598,22 @@ function QrStudio({ l }: any) {
   function printCard() {
     const w = window.open("", "1qr-print-card", "width=600,height=760");
     if (!w) return;
-    w.document.write(`<title>${l.name} · 1QR</title><style>body{font-family:Arial;text-align:center;padding:40px;color:#174f43}img{width:420px;max-width:90vw}h1{font-size:32px}p{letter-spacing:2px;font-weight:bold}</style><h1>${l.name}</h1><p>SCAN TO EXPLORE</p><img src="${location.origin}/api/locations/${l.id}/qr?format=svg&kind=page" alt="QR"/><p>Scan · Browse · Order</p>`);
+    // Build the print document with DOM APIs. Business names are tenant-controlled
+    // text and must never be interpolated into HTML written with document.write.
+    w.document.title = `${l.name} · 1QR`;
+    const style = w.document.createElement("style");
+    style.textContent = "body{font-family:Arial;text-align:center;padding:40px;color:#174f43}img{width:420px;max-width:90vw}h1{font-size:32px}p{letter-spacing:2px;font-weight:bold}";
+    const heading = w.document.createElement("h1");
+    heading.textContent = l.name;
+    const intro = w.document.createElement("p");
+    intro.textContent = "SCAN TO EXPLORE";
+    const image = w.document.createElement("img");
+    image.src = `${location.origin}/api/locations/${encodeURIComponent(l.id)}/qr?format=svg&kind=page`;
+    image.alt = "QR";
+    const outro = w.document.createElement("p");
+    outro.textContent = "Scan · Browse · Order";
+    w.document.head.append(style);
+    w.document.body.append(heading, intro, image, outro);
     w.document.close(); w.focus(); w.print();
   }
   return (

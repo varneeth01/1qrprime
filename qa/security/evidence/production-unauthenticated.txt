@@ -1,0 +1,145 @@
+--- GET /api/health
+HTTP/2 200 
+access-control-allow-credentials: true
+alt-svc: h3=":443"; ma=2592000
+content-security-policy: default-src 'self';base-uri 'self';font-src 'self' https: data:;form-action 'self';frame-ancestors 'none';img-src 'self' https: data:;object-src 'none';script-src 'self';script-src-attr 'none';style-src 'self';upgrade-insecure-requests;connect-src 'self'
+content-type: application/json; charset=utf-8
+cross-origin-opener-policy: same-origin
+cross-origin-resource-policy: same-origin
+date: Thu, 08 Oct 2026 21:58:06 GMT
+origin-agent-cluster: ?1
+referrer-policy: no-referrer
+strict-transport-security: max-age=31536000; includeSubDomains
+vary: Origin
+--- GET /api/ready
+HTTP/2 200 
+access-control-allow-credentials: true
+alt-svc: h3=":443"; ma=2592000
+content-security-policy: default-src 'self';base-uri 'self';font-src 'self' https: data:;form-action 'self';frame-ancestors 'none';img-src 'self' https: data:;object-src 'none';script-src 'self';script-src-attr 'none';style-src 'self';upgrade-insecure-requests;connect-src 'self'
+content-type: application/json; charset=utf-8
+cross-origin-opener-policy: same-origin
+cross-origin-resource-policy: same-origin
+date: Thu, 08 Oct 2026 21:58:06 GMT
+origin-agent-cluster: ?1
+referrer-policy: no-referrer
+strict-transport-security: max-age=31536000; includeSubDomains
+vary: Origin
+--- GET /api/runtime-config
+HTTP/2 200 
+access-control-allow-credentials: true
+alt-svc: h3=":443"; ma=2592000
+content-security-policy: default-src 'self';base-uri 'self';font-src 'self' https: data:;form-action 'self';frame-ancestors 'none';img-src 'self' https: data:;object-src 'none';script-src 'self';script-src-attr 'none';style-src 'self';upgrade-insecure-requests;connect-src 'self'
+content-type: application/json; charset=utf-8
+cross-origin-opener-policy: same-origin
+cross-origin-resource-policy: same-origin
+date: Thu, 08 Oct 2026 21:58:07 GMT
+origin-agent-cluster: ?1
+referrer-policy: no-referrer
+strict-transport-security: max-age=31536000; includeSubDomains
+vary: Origin
+--- GET /api/templates
+HTTP/2 200 
+access-control-allow-credentials: true
+alt-svc: h3=":443"; ma=2592000
+content-security-policy: default-src 'self';base-uri 'self';font-src 'self' https: data:;form-action 'self';frame-ancestors 'none';img-src 'self' https: data:;object-src 'none';script-src 'self';script-src-attr 'none';style-src 'self';upgrade-insecure-requests;connect-src 'self'
+content-type: application/json; charset=utf-8
+cross-origin-opener-policy: same-origin
+cross-origin-resource-policy: same-origin
+date: Thu, 08 Oct 2026 21:58:07 GMT
+origin-agent-cluster: ?1
+referrer-policy: no-referrer
+strict-transport-security: max-age=31536000; includeSubDomains
+vary: Origin
+--- GET /api/me
+HTTP/2 401 
+access-control-allow-credentials: true
+alt-svc: h3=":443"; ma=2592000
+content-security-policy: default-src 'self';base-uri 'self';font-src 'self' https: data:;form-action 'self';frame-ancestors 'none';img-src 'self' https: data:;object-src 'none';script-src 'self';script-src-attr 'none';style-src 'self';upgrade-insecure-requests;connect-src 'self'
+content-type: application/json; charset=utf-8
+cross-origin-opener-policy: same-origin
+cross-origin-resource-policy: same-origin
+date: Thu, 08 Oct 2026 21:58:07 GMT
+origin-agent-cluster: ?1
+referrer-policy: no-referrer
+strict-transport-security: max-age=31536000; includeSubDomains
+vary: Origin
+--- GET /api/locations/00000000-0000-0000-0000-000000000000/orders
+HTTP/2 404 
+access-control-allow-credentials: true
+alt-svc: h3=":443"; ma=2592000
+content-security-policy: default-src 'self';base-uri 'self';font-src 'self' https: data:;form-action 'self';frame-ancestors 'none';img-src 'self' https: data:;object-src 'none';script-src 'self';script-src-attr 'none';style-src 'self';upgrade-insecure-requests;connect-src 'self'
+content-type: application/json; charset=utf-8
+cross-origin-opener-policy: same-origin
+cross-origin-resource-policy: same-origin
+date: Thu, 08 Oct 2026 21:58:08 GMT
+origin-agent-cluster: ?1
+referrer-policy: no-referrer
+strict-transport-security: max-age=31536000; includeSubDomains
+vary: Origin
+--- GET /api/admin/plans
+HTTP/2 401 
+access-control-allow-credentials: true
+alt-svc: h3=":443"; ma=2592000
+content-security-policy: default-src 'self';base-uri 'self';font-src 'self' https: data:;form-action 'self';frame-ancestors 'none';img-src 'self' https: data:;object-src 'none';script-src 'self';script-src-attr 'none';style-src 'self';upgrade-insecure-requests;connect-src 'self'
+content-type: application/json; charset=utf-8
+cross-origin-opener-policy: same-origin
+cross-origin-resource-policy: same-origin
+date: Thu, 08 Oct 2026 21:58:08 GMT
+origin-agent-cluster: ?1
+referrer-policy: no-referrer
+strict-transport-security: max-age=31536000; includeSubDomains
+vary: Origin
+--- invalid register
+HTTP/2 400 
+access-control-allow-credentials: true
+alt-svc: h3=":443"; ma=2592000
+content-security-policy: default-src 'self';base-uri 'self';font-src 'self' https: data:;form-action 'self';frame-ancestors 'none';img-src 'self' https: data:;object-src 'none';script-src 'self';script-src-attr 'none';style-src 'self';upgrade-insecure-requests;connect-src 'self'
+content-type: application/json; charset=utf-8
+cross-origin-opener-policy: same-origin
+cross-origin-resource-policy: same-origin
+date: Thu, 08 Oct 2026 21:58:08 GMT
+origin-agent-cluster: ?1
+referrer-policy: no-referrer
+strict-transport-security: max-age=31536000; includeSubDomains
+vary: Origin
+x-content-type-options: nosniff
+x-dns-prefetch-control: off
+x-download-options: noopen
+x-frame-options: SAMEORIGIN
+x-permitted-cross-domain-policies: none
+x-ratelimit-limit: 5
+x-ratelimit-remaining: 0
+x-ratelimit-reset: 469
+x-xss-protection: 0
+content-length: 411
+
+{"error":"Invalid input","details":[{"expected":"string","code":"invalid_type","path":["email"],"message":"Invalid input: expected string, received undefined"},{"expected":"string","code":"invalid_type","path":["password"],"message":"Invalid input: expected string, received undefined"},{"expected":"string","code":"invalid_type","path":["name"],"message":"Invalid input: expected string, received undefined"}]}--- CORS evil preflight
+HTTP/2 404 
+alt-svc: h3=":443"; ma=2592000
+content-security-policy: default-src 'self';base-uri 'self';font-src 'self' https: data:;form-action 'self';frame-ancestors 'none';img-src 'self' https: data:;object-src 'none';script-src 'self';script-src-attr 'none';style-src 'self';upgrade-insecure-requests;connect-src 'self'
+content-type: application/json; charset=utf-8
+cross-origin-opener-policy: same-origin
+cross-origin-resource-policy: same-origin
+date: Thu, 08 Oct 2026 21:58:08 GMT
+origin-agent-cluster: ?1
+referrer-policy: no-referrer
+strict-transport-security: max-age=31536000; includeSubDomains
+vary: Origin
+x-content-type-options: nosniff
+x-dns-prefetch-control: off
+x-download-options: noopen
+x-frame-options: SAMEORIGIN
+x-permitted-cross-domain-policies: none
+x-xss-protection: 0
+content-length: 90
+
+{"message":"Route OPTIONS:/api/auth/login not found","error":"Not Found","statusCode":404}--- CORS allowed preflight
+HTTP/2 204 
+access-control-allow-credentials: true
+access-control-allow-headers: content-type
+access-control-allow-methods: GET,HEAD,POST
+access-control-allow-origin: https://1qrprime.com
+alt-svc: h3=":443"; ma=2592000
+date: Thu, 08 Oct 2026 21:58:09 GMT
+vary: Origin, Access-Control-Request-Headers
+

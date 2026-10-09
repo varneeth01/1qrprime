@@ -594,6 +594,17 @@ test("subscription lapse preserves public QR and existing order desk", async () 
   );
 });
 test("CSRF origin and input validation", async () => {
+  const preflight = await app.inject({
+    method: "OPTIONS",
+    url: "/api/auth/login",
+    headers: {
+      origin: "http://localhost:5173",
+      "access-control-request-method": "POST",
+      "access-control-request-headers": "authorization,content-type",
+    },
+  });
+  assert.equal(preflight.statusCode, 204);
+  assert.match(String(preflight.headers["access-control-allow-methods"]), /PATCH/);
   assert.equal(
     (
       await call(

@@ -1,0 +1,35 @@
+1QR Prime bounded production security probes — 2026-10-09
+
+Unauthenticated/API:
+GET /api/health -> 200 {"ok":true}
+GET /api/ready -> 200 {"ok":true,"database":true,"migrations":true}
+GET /api/me -> 401
+GET /api/admin/plans -> 401
+GET /api/locations/00000000-0000-0000-0000-000000000000/orders -> 404
+POST /api/auth/register with {} -> 400 validation response; no stack/secret
+
+CORS observed before the local methods fix (live deployment was not changed):
+Origin https://1qrprime.com, POST preflight -> 204; allow-origin exact; credentials true; methods GET,HEAD,POST
+Origin https://admin.1qrprime.com, POST preflight -> 204; allow-origin exact; credentials true
+Origin https://evil.example -> 404; no allow-origin
+Origin null -> 404; no allow-origin
+Origin http://1qrprime.com -> 404; no allow-origin
+Origin https://1qrprime.com.evil.example -> 404; no allow-origin
+
+Security headers observed:
+Web: HSTS, X-Content-Type-Options nosniff, X-Frame-Options DENY, strict-origin-when-cross-origin
+API: HSTS includeSubDomains, X-Content-Type-Options nosniff, X-Frame-Options SAMEORIGIN, CSP frame-ancestors none, object-src none, script-src self
+
+Bounded disposable live test:
+Two randomized owners and two randomized locations were created.
+Owner A reading/writing Owner B location, menu, tables and item -> 403 in every exercised case.
+Owner A reading admin accounts -> 403.
+Invalid session /api/me -> 401.
+Owner A logout -> 200; old token /api/me -> 401.
+Owner B disposable account deletion -> 200.
+Owner A cleanup was not completed because its token was intentionally revoked before cleanup; synthetic email is disclosed only in the audit handoff, not in public reports.
+
+Android APK audit before the local hardening build:
+package in.oneqr.prime, versionName 1.0.0, versionCode 1
+merged release manifest reported allowBackup=true and usesCleartextTraffic=true.
+Source/plugin hardening was then applied locally; final packaged retest was blocked by missing local NDK 27.0.12077973 after Expo prebuild regenerated ignored native files.

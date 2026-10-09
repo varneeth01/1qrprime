@@ -70,6 +70,7 @@ export async function createApp(
   await app.register(cors, {
     origin: (origin, cb) => cb(null, !origin || browserOrigins.has(origin)),
     credentials: true,
+    methods: ["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
   });
   await app.register(helmet, {
     contentSecurityPolicy: {

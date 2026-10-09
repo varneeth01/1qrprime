@@ -38,6 +38,7 @@ const config = {
   },
   plugins: [
     "./plugins/with-android-toolchain",
+    "./plugins/with-android-security",
     "expo-secure-store",
     "expo-notifications",
     "expo-sharing",
@@ -49,7 +50,7 @@ const config = {
           compileSdkVersion: 36,
           targetSdkVersion: 36,
           minSdkVersion: 26,
-          usesCleartextTraffic: process.env.APP_VARIANT === "development",
+          usesCleartextTraffic: false,
         },
       },
     ],
