@@ -1,0 +1,23 @@
+export const theme = {
+  colors: {
+    background: "#050505",
+    surface: "#0B0B0C",
+    surfaceRaised: "#121214",
+    surfaceFloating: "rgba(255,255,255,0.055)",
+    text: "rgba(255,255,255,0.96)",
+    muted: "rgba(255,255,255,0.62)",
+    faint: "rgba(255,255,255,0.38)",
+    line: "rgba(255,255,255,0.07)",
+    lineStrong: "rgba(255,255,255,0.13)",
+    accent: "#E9F2C4",
+    accentInk: "#12150D",
+    orders: "#E7B77E",
+    menu: "#BFD99A",
+    qr: "#9FC7EA",
+    payments: "#B7C9E6",
+    danger: "#FF9B9B",
+    success: "#BFE7B0",
+  },
+  radius: { sm: 10, md: 12, lg: 16, xl: 24, pill: 999 },
+  spacing: { xs: 4, sm: 8, md: 12, lg: 16, xl: 20, xxl: 24, xxxl: 32 },
+};

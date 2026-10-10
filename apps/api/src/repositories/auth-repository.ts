@@ -19,7 +19,7 @@ export class AuthRepository {
     await this.db.transaction(async (tx) => {
       await tx.run("INSERT INTO users(id,email,password) VALUES (?,?,?)", [user.id, user.email, user.password]);
       await tx.run("INSERT INTO tenants(id,name) VALUES (?,?)", [tenant.id, tenant.name]);
-      await tx.run("INSERT INTO memberships VALUES (?,?,?)", [user.id, tenant.id, "owner"]);
+      await tx.run("INSERT INTO memberships(user_id,tenant_id,role,permissions) VALUES (?,?,?,'{}')", [user.id, tenant.id, "owner"]);
     });
   }
 

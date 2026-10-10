@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import {
   View,
   Image,
@@ -24,6 +24,13 @@ import Constants from "expo-constants";
 import * as Sharing from "expo-sharing";
 import * as ImagePicker from "expo-image-picker";
 import { File, Paths } from "expo-file-system";
+import { normalizeSlug, SLUG_AVAILABILITY_PATH, slugFormatMessage } from "../../shared/slug";
+import { theme } from "./theme";
+import { userFacingError, type AppErrorPayload } from "../../shared/app-errors";
+import { canRenderMerchantNavigation, resolveProductState } from "../../shared/product-state";
+import { AppHeader } from "./components/AppHeader";
+import { GlassBottomNav } from "./components/GlassBottomNav";
+import { ActionTile } from "./components/ActionTile";
 const ENVIRONMENT = process.env.EXPO_PUBLIC_ENVIRONMENT || (process.env.APP_VARIANT === "development" ? "local" : "production");
 const configuredApi = process.env.EXPO_PUBLIC_API_URL || process.env.EXPO_PUBLIC_API_ORIGIN;
 const configuredWeb = process.env.EXPO_PUBLIC_WEB_ORIGIN;
@@ -93,7 +100,7 @@ function Button({ title, onPress, secondary = false, disabled = false }: any) {
     </Pressable>
   );
 }
-function Input({ title, ...props }: any) {
+function Input({ title, error = "", success = "", ...props }: any) {
   return (
     <View style={s.field}>
       <Text style={s.label}>{title}</Text>
@@ -103,11 +110,12 @@ function Input({ title, ...props }: any) {
         placeholderTextColor="#A3A3A3"
         {...props}
       />
+      {error ? <Text accessibilityRole="alert" style={s.fieldMessage}>{error}</Text> : success ? <Text style={s.fieldSuccess}>{success}</Text> : null}
     </View>
   );
 }
-function Card({ children }: any) {
-  return <View style={s.card}>{children}</View>;
+function Card({ children, style }: any) {
+  return <View style={[s.card, style]}>{children}</View>;
 }
 function Title({ children }: any) {
   return <Text style={s.title}>{children}</Text>;
@@ -115,16 +123,42 @@ function Title({ children }: any) {
 function Hint({ children }: any) {
   return <Text style={s.hint}>{children}</Text>;
 }
+function SalesPendingMobile({ l, me, onEdit, onSignOut }: any) {
+  return <View style={s.salesPending}>
+    <Text style={s.kicker}>REQUEST RECEIVED</Text>
+    <Title>Thanks — we’ll take it from here.</Title>
+    <Hint>We’re currently onboarding businesses in your category personally. Our team will contact you soon.</Hint>
+    <View style={s.salesSummary}>
+      {[['Business', l?.name], ['Category', label(l?.category || 'business')], ['Email', me?.email], ['Phone', l?.profile?.phone || 'Not provided'], ['City', l?.profile?.city || l?.profile?.address || 'Not provided']].map(([title, value]) => <View style={s.salesSummaryRow} key={title}><Text style={s.salesSummaryLabel}>{title}</Text><Text style={s.salesSummaryValue}>{value}</Text></View>)}
+    </View>
+    <Button title="Edit business details" onPress={onEdit} />
+    <Button title="Contact support" secondary onPress={() => Linking.openURL(`${WEB}/support`)} />
+    <Button title="Sign out" secondary onPress={onSignOut} />
+  </View>;
+}
 function Stars() {
   const stars = [[8,10,2],[24,18,1],[78,7,1],[92,24,2],[51,14,1],[15,42,1],[68,38,1],[87,51,1],[38,58,2],[4,72,1],[73,78,1],[28,88,1],[96,91,2],[57,95,1]];
   return <View pointerEvents="none" style={StyleSheet.absoluteFill}>{stars.map(([left, top, size], i) => <View key={i} style={[s.star, { left: `${left}%`, top: `${top}%`, width: size, height: size }]} />)}</View>;
 }
 function friendlyError(error: unknown) {
+  if (error instanceof NativeApiError) return error.message;
   const message = error instanceof Error ? error.message : String(error || "");
-  if (/unknownhost|network request failed|fetch failed|failed to fetch|timed out/i.test(message)) return "Unable to connect to 1QR preview. Check your internet or restart the preview server.";
+  if (/unknownhost|network request failed|fetch failed|failed to fetch|timed out/i.test(message)) return "Couldn't connect. Check your connection and try again.";
+  if (/too many|rate limit/i.test(message)) return "Too many attempts. Please wait a moment and try again.";
+  if (/changed elsewhere|refresh before saving/i.test(message)) return "Something changed since you opened this page. We've refreshed the latest version.";
   if (/unauthorized|invalid token|session expired/i.test(message)) return "Your session expired. Please sign in again.";
   if (/forbidden|permission/i.test(message)) return "You do not have permission to do that.";
   return message || "Something went wrong. Please try again.";
+}
+class NativeApiError extends Error {
+  status: number;
+  data: AppErrorPayload;
+  constructor(message: string, status: number, data: AppErrorPayload = {}) {
+    super(message);
+    this.name = "NativeApiError";
+    this.status = status;
+    this.data = data;
+  }
 }
 async function updateLocationRequest(
   request: (path: string, method?: string, body?: unknown) => Promise<Row>,
@@ -186,8 +220,15 @@ export default function App() {
     [me, setMe] = useState<Row | null>(null),
     [lid, setLid] = useState(""),
     [tab, setTab] = useState("Home"),
+    [salesEditing, setSalesEditing] = useState(false),
     [busy, setBusy] = useState(false),
-    [error, setError] = useState("");
+    [error, setError] = useState(""),
+    [rateLimitSeconds, setRateLimitSeconds] = useState(0);
+  useEffect(() => {
+    if (!rateLimitSeconds) return;
+    const timer = setInterval(() => setRateLimitSeconds((value) => Math.max(0, value - 1)), 1000);
+    return () => clearInterval(timer);
+  }, [rateLimitSeconds]);
   const request = useCallback(
     async (path: string, method = "GET", body?: unknown) => {
       const response = await fetch(`${API_BASE}${path}`, {
@@ -199,14 +240,21 @@ export default function App() {
         },
         body: body !== undefined ? JSON.stringify(body) : undefined,
       });
-      const data = await response.json();
+      const data = await response.json().catch(() => ({}));
       if (!response.ok) {
         if (response.status === 401 && token) {
           await SecureStore.deleteItemAsync("prime.session");
           setToken(null);
           setMe(null);
+          setLid("");
+          setTab(OwnerRoutes.Home);
         }
-        throw Error(data.error || "Request failed");
+        const contextual = path.startsWith("/billing/checkout/order") && [404, 500, 502, 503].includes(response.status)
+          ? { ...data, code: "PAYMENT_UNAVAILABLE" }
+          : path.startsWith("/billing/checkout/verify") && [400, 404, 500, 502, 503].includes(response.status)
+            ? { ...data, code: "PAYMENT_VERIFICATION_FAILED" }
+            : data;
+        throw new NativeApiError(userFacingError(response.status, contextual), response.status, contextual);
       }
       return data;
     },
@@ -226,7 +274,9 @@ export default function App() {
       );
       setError("");
     } catch (e) {
-      setError(friendlyError(e));
+      const retry = e instanceof NativeApiError && e.status === 429 ? Number(e.data?.retryAfterSeconds || 60) : 0;
+      setRateLimitSeconds(Math.max(0, retry));
+      setError(retry ? "" : friendlyError(e));
     }
   }, [request, token]);
   useEffect(() => {
@@ -237,7 +287,16 @@ export default function App() {
   useEffect(() => {
     refresh();
   }, [refresh]);
+  const resetSession = useCallback(async () => {
+    await SecureStore.deleteItemAsync("prime.session");
+    setToken(null);
+    setMe(null);
+    setLid("");
+    setTab(OwnerRoutes.Home);
+    setError("");
+  }, []);
   const navigateOwner = useCallback((next: string) => {
+    if (!canRenderMerchantNavigation(resolveProductState({ ...me, activeLocationId: lid }))) return;
     setLid((current) => {
       if (current === "all" && next !== OwnerRoutes.Home && me?.locations.length) {
         return me.locations[0].id;
@@ -245,7 +304,7 @@ export default function App() {
       return current;
     });
     setTab(next);
-  }, [me?.locations]);
+  }, [lid, me]);
   useEffect(() => {
     const subscription = BackHandler.addEventListener("hardwareBackPress", () => {
       if (tab !== OwnerRoutes.Home) {
@@ -283,36 +342,39 @@ export default function App() {
   const l = me?.locations.find((x: Row) => x.id === lid),
     tenant =
       me?.tenants.find((t: Row) => t.id === l?.tenant_id) || me?.tenants[0];
+  const productState = resolveProductState({ ...me, activeLocationId: l?.id });
+  useEffect(() => {
+    if (!canRenderMerchantNavigation(productState)) setTab(OwnerRoutes.Home);
+  }, [productState]);
   if (!ready)
     return (
-      <View style={s.loading}>
-        <ActivityIndicator accessibilityLabel="Loading" />
+      <View style={s.bootScreen}>
+        <View style={s.authBrand}><Text style={s.authBrandMark}>▦</Text><Text style={s.authBrandText}>1QR <Text style={s.authBrandMuted}>Prime</Text></Text></View>
+        <Text style={s.bootTitle}>Preparing your workspace</Text>
+        <ActivityIndicator accessibilityLabel="Loading" color="#ffffff" />
       </View>
     );
   return (
     <View style={s.safe}>
-      <Stars />
       <StatusBar style="light" />
-      <View style={s.header}>
-        <Text style={s.brand}>
-          ▦ 1QR <Text style={{ fontWeight: "400" }}>Prime</Text>
-        </Text>
-        <Text style={s.kicker}>MERCHANT</Text>
-      </View>
-      <Text style={[s.environmentTag, environmentLabel === "PREVIEW" && s.previewTag]}>{environmentLabel}</Text>
+      {token && me && canRenderMerchantNavigation(productState) && <AppHeader businessName={l?.name || (lid === "all" ? "All businesses" : undefined)} environment={environmentLabel} onBusinessPress={() => setTab(OwnerRoutes.Home)} onProfilePress={() => navigateOwner(OwnerRoutes.Settings)} />}
       {error ? (
         <Text accessibilityRole="alert" style={s.error}>
           {error}
         </Text>
       ) : null}
       {!token ? (
-        <Auth login={login} run={run} busy={busy} />
+          <Auth login={login} run={run} busy={busy} clearError={() => { setError(""); setRateLimitSeconds(0); }} rateLimitSeconds={rateLimitSeconds} />
       ) : !me ? (
         <View style={s.loading}>
           <Text style={s.loadingTitle}>Connecting to 1QR Prime</Text>
           <Hint>Loading your business workspace…</Hint>
           <Button title="Retry connection" onPress={() => run(refresh)} />
         </View>
+      ) : !canRenderMerchantNavigation(productState) ? (
+        <ScrollView style={s.content} contentContainerStyle={{ paddingBottom: 40 }}>
+          {productState === "AUTHENTICATED_ACCOUNT_SETUP" ? <CreateLocation me={me} tenant={tenant} request={request} run={run} done={async () => { await refresh(); setTab(OwnerRoutes.Home); }} onSignOut={resetSession} token={token} initial={l} /> : productState === "PRIME_PAYMENT_REQUIRED" ? <PrimePaymentRequired /> : salesEditing ? <CreateLocation me={me} tenant={tenant} request={request} run={run} done={async () => { setSalesEditing(false); await refresh(); }} onSalesSubmitted={async () => { setSalesEditing(false); await refresh(); }} onSignOut={resetSession} token={token} initial={l} startAt={0} /> : <SalesPendingMobile l={l} me={me} onEdit={() => setSalesEditing(true)} onSignOut={resetSession} />}
+        </ScrollView>
       ) : (
         <>
           <ScrollView
@@ -348,6 +410,7 @@ export default function App() {
             </ScrollView>
             {tab === OwnerRoutes.New ? (
               <CreateLocation
+                me={me}
                 tenant={tenant}
                 request={request}
                 run={run}
@@ -356,11 +419,12 @@ export default function App() {
                   setTab(OwnerRoutes.Home);
                 }}
                 token={token}
+                onSignOut={resetSession}
               />
             ) : lid === "all" && tab === OwnerRoutes.Home ? (
               <OwnerPortfolio me={me} request={request} setLid={setLid} setTab={setTab} />
             ) : !l ? (
-              <CreateLocation tenant={tenant} request={request} run={run} done={async () => { await refresh(); setTab(OwnerRoutes.Home); }} token={token} />
+              <CreateLocation me={me} tenant={tenant} request={request} run={run} done={async () => { await refresh(); setTab(OwnerRoutes.Home); }} onSignOut={resetSession} token={token} />
             ) : (
               <>
                 {tab === OwnerRoutes.Home && (
@@ -384,7 +448,7 @@ export default function App() {
                       </Text>
                     </View>
                     <View style={s.quickGrid}>
-                      {[['Orders', 'Live order desk', OwnerRoutes.Orders], ['Menu', 'Edit dishes', OwnerRoutes.Menu], ['Tables', 'Table QR codes', OwnerRoutes.Tables], ['QR', 'Share your QR', OwnerRoutes.QR]].map(([title, detail, target]) => <Pressable key={title} accessibilityRole="button" style={s.quickAction} onPress={() => navigateOwner(target)}><Text style={s.quickActionTitle}>{title}</Text><Text style={s.quickActionDetail}>{detail}</Text><Text style={s.arrow}>→</Text></Pressable>)}
+                      {[['Orders', 'Live order desk', OwnerRoutes.Orders, theme.colors.orders], ['Menu', 'Edit dishes', OwnerRoutes.Menu, theme.colors.menu], ['Tables', 'Table QR codes', OwnerRoutes.Tables, theme.colors.qr], ['QR', 'Share your QR', OwnerRoutes.QR, theme.colors.qr]].map(([title, detail, target, accent]) => <ActionTile key={title} title={String(title)} detail={String(detail)} accent={String(accent)} onPress={() => navigateOwner(String(target))} />)}
                     </View>
                     <Pressable style={s.warningCard} onPress={() => navigateOwner(OwnerRoutes.Payments)}><Text style={s.warningTitle}>Payments are not set up</Text><Text style={s.warningText}>Configure UPI so customers can pay from your page.</Text><Text style={s.warningLink}>Configure UPI →</Text></Pressable>
                   </>
@@ -531,9 +595,7 @@ export default function App() {
                         request={request}
                         run={run}
                         done={async () => {
-                          await SecureStore.deleteItemAsync("prime.session");
-                          setToken(null);
-                          setMe(null);
+                          await resetSession();
                         }}
                       />
                       <Button
@@ -546,9 +608,7 @@ export default function App() {
                             // content type is application/json. Send an explicit
                             // empty object so logout works against the remote API.
                             await request("/auth/logout", "POST", {});
-                            await SecureStore.deleteItemAsync("prime.session");
-                            setToken(null);
-                            setMe(null);
+                            await resetSession();
                           })
                         }
                       />
@@ -563,60 +623,34 @@ export default function App() {
               </>
             )}
           </ScrollView>
-          <View style={s.nav}>
-            {["Home", "Orders", "Menu", "QR", "More"]
-              .filter(
-                (t) =>
-                  !(l?.role === "staff" && ["Profile", "Payments"].includes(t)),
-              )
-              .map((t) => (
-                <Pressable
-                  accessibilityRole="tab"
-                  accessibilityState={{ selected: tab === t }}
-                  key={t}
-                  onPress={() => navigateOwner(t)}
-                  style={[s.navButton, tab === t && s.navActive]}
-                >
-                  <Text
-                    style={[
-                      s.navText,
-                      tab === t && { color: "#194f42", fontWeight: "700" },
-                    ]}
-                  >
-                    {t}
-                  </Text>
-                </Pressable>
-              ))}
-          </View>
+          <GlassBottomNav active={tab} onChange={navigateOwner} />
         </>
       )}
     </View>
   );
 }
-function Auth({ login, run, busy }: any) {
+function Auth({ login, run, busy, clearError, rateLimitSeconds = 0 }: any) {
   const [register, setRegister] = useState(false),
     [email, setEmail] = useState(""),
     [password, setPassword] = useState(""),
     [name, setName] = useState("");
   return (
-    <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === "ios" ? "padding" : "height"}>
-    <ScrollView style={s.content} contentContainerStyle={{ paddingBottom: 30 }} keyboardShouldPersistTaps="handled">
-      <View style={s.hero}>
-        <Text style={s.heroEyebrow}>✦ MERCHANT WORKSPACE</Text>
-        <Text style={s.heroTitle}>One QR.{"\n"}Your whole business.</Text>
-        <Text style={s.heroText}>
-          Run your business from one calm, focused workspace.
-        </Text>
-      </View>
-      <Card>
+    <KeyboardAvoidingView style={s.authScreen} behavior={Platform.OS === "ios" ? "padding" : "height"}>
+    <ScrollView style={s.authScroll} contentContainerStyle={s.authContent} keyboardShouldPersistTaps="handled">
+      <View style={s.authBrand}><Text style={s.authBrandMark}>▦</Text><Text style={s.authBrandText}>1QR <Text style={s.authBrandMuted}>Prime</Text></Text></View>
+      <View style={s.authIntro}>
         <Title>{register ? "Create your account" : "Welcome back"}</Title>
+        <Hint>{register ? "Start setting up your business in a few minutes." : "Sign in to manage your business."}</Hint>
+      </View>
+      <Card style={s.authCard}>
+        {rateLimitSeconds > 0 && <Text accessibilityRole="alert" style={s.authRateLimit}>Too many attempts. Try again in {rateLimitSeconds} seconds.</Text>}
         {register && (
-          <Input title="Business name" value={name} onChangeText={setName} />
+          <Input title="Business name" value={name} onChangeText={(value: string) => { setName(value); clearError(); }} />
         )}
         <Input
           title="Email"
           value={email}
-          onChangeText={setEmail}
+          onChangeText={(value: string) => { setEmail(value); clearError(); }}
           autoCapitalize="none"
           keyboardType="email-address"
           autoComplete="email"
@@ -624,7 +658,7 @@ function Auth({ login, run, busy }: any) {
         <Input
           title="Password (at least 12 characters)"
           value={password}
-          onChangeText={setPassword}
+          onChangeText={(value: string) => { setPassword(value); clearError(); }}
           secureTextEntry
           autoComplete={register ? "new-password" : "current-password"}
         />
@@ -632,7 +666,7 @@ function Auth({ login, run, busy }: any) {
           title={
             busy ? "Please wait…" : register ? "Create account" : "Sign in"
           }
-          disabled={busy}
+          disabled={busy || rateLimitSeconds > 0}
           onPress={() =>
             run(() =>
               login(register, {
@@ -643,11 +677,7 @@ function Auth({ login, run, busy }: any) {
             )
           }
         />
-        <Button
-          title="Forgot password"
-          secondary
-          onPress={() => Linking.openURL(`${WEB}/recovery`)}
-        />
+        {!register && <Button title="Forgot password" secondary onPress={() => Linking.openURL(`${WEB}/recovery`)} />}
         <Button
           title={
             register ? "I already have an account" : "Create a free account"
@@ -660,40 +690,74 @@ function Auth({ login, run, busy }: any) {
     </KeyboardAvoidingView>
   );
 }
-function CreateLocation({ tenant, request, run, done, token }: any) {
-  const [name, setName] = useState(""),
-    [slug, setSlug] = useState(""),
-    [category, setCategory] = useState("restaurant"),
-    [step, setStep] = useState(0),
-    [location, setLocation] = useState<Row | null>(null),
-    [description, setDescription] = useState(""),
-    [address, setAddress] = useState(""),
-    [phone, setPhone] = useState(""),
+function CreateLocation({ me, tenant, request, run, done, token, initial, startAt, onSalesSubmitted, onSignOut }: any) {
+  const [name, setName] = useState(initial?.name || ""),
+    [slug, setSlug] = useState(initial?.slug || ""),
+    [slugTouched, setSlugTouched] = useState(false),
+    [slugBlurred, setSlugBlurred] = useState(false),
+    [slugSubmitted, setSlugSubmitted] = useState(false),
+    [category, setCategory] = useState(initial?.category || "restaurant"),
+    [step, setStep] = useState(startAt ?? initial?.onboarding?.step ?? 0),
+    [location, setLocation] = useState<Row | null>(initial || null),
+    [description, setDescription] = useState(initial?.profile?.description || ""),
+    [address, setAddress] = useState(initial?.profile?.address || ""),
+    [phone, setPhone] = useState(initial?.profile?.phone || ""),
     [tax, setTax] = useState("0"),
     [packaging, setPackaging] = useState("0"),
     [plans, setPlans] = useState<Row[]>([]),
-    [planId, setPlanId] = useState("prime");
+    [planId, setPlanId] = useState("prime"),
+    [salesSubmitted, setSalesSubmitted] = useState(false),
+    [slugAvailability, setSlugAvailability] = useState<"idle" | "checking" | "available" | "unavailable">("idle"),
+    [slugAvailabilityValue, setSlugAvailabilityValue] = useState("");
   const restaurant = ["restaurant", "cafe", "cloud_kitchen"].includes(category);
+  const primeEligible = ["restaurant", "cafe", "hotel"].includes(category);
+  const slugError = slugFormatMessage(slug);
+  const availabilityRequest = useRef(0);
+  useEffect(() => {
+    const value = normalizeSlug(slug);
+    const requestId = ++availabilityRequest.current;
+    if (!value || slugError || value.length < 3) { setSlugAvailability("idle"); setSlugAvailabilityValue(""); return; }
+    setSlugAvailability("checking");
+    setSlugAvailabilityValue(value);
+    const timer = setTimeout(() => {
+      request(`${SLUG_AVAILABILITY_PATH}?slug=${encodeURIComponent(value)}`)
+        .then((result: Row) => { if (requestId === availabilityRequest.current && value === normalizeSlug(slug)) setSlugAvailability(result.available ? "available" : "unavailable"); })
+        .catch(() => { if (requestId === availabilityRequest.current) { setSlugAvailability("idle"); setSlugAvailabilityValue(""); } });
+    }, 500);
+    return () => clearTimeout(timer);
+  }, [request, slug, slugError]);
   useEffect(() => { request("/plans").then((value: Row[]) => setPlans(value)).catch(() => {}); }, [request]);
   async function next() {
     if (step === 0) {
-      const created = await request("/locations", "POST", { name, slug, category, tenantId: tenant.id });
+      const canonicalSlug = normalizeSlug(slug);
+      setSlugSubmitted(true);
+      setSlug(canonicalSlug);
+      if (slugFormatMessage(canonicalSlug) || (slugAvailabilityValue === canonicalSlug && slugAvailability === "unavailable") || (slugAvailabilityValue === canonicalSlug && slugAvailability === "checking")) return;
+      const created = await request("/locations", "POST", { name, slug: canonicalSlug, category, tenantId: tenant.id });
       setLocation(created); setStep(1); return;
     }
     if (!location) return;
     const profile = { ...location.profile, description, address, phone, orderEnabled: restaurant, orderTypes: restaurant ? ["dine_in", "takeaway"] : ["takeaway"], payAtCounter: true, taxBps: Math.round(Number(tax || 0) * 100), packagingFeePaise: Math.round(Number(packaging || 0) * 100) };
     if (step < 3) { const saved = await request(`/locations/${location.id}/onboarding`, "PATCH", { step: step + 1, name, category, profile }); setLocation(saved); setStep(step + 1); return; }
     if (step === 3) {
+      if (!primeEligible) {
+        await request("/sales/leads", "POST", { businessName: name, category, email: me.email, phone: phone || "Not provided", city: address || "Not provided", locationCount: 1, notes: "Requested a custom onboarding conversation." });
+        setSalesSubmitted(true);
+        await onSalesSubmitted?.();
+        return;
+      }
       await request(`/tenants/${tenant.id}/plan`, "PUT", { planId });
-      const published = await updateLocationRequest(request, location.id, { name, category, profile, published: true, version: location.version });
-      setLocation(published); setStep(4); return;
+      const prepared = await request(`/locations/${location.id}/onboarding`, "PATCH", { step: 4, name, category, profile, completed: false });
+      const published = await request(`/locations/${location.id}/publish`, "POST");
+      setLocation(published.location || prepared); setStep(4); return;
     }
     const published = await updateLocationRequest(request, location.id, { name, category, profile, published: true, version: location.version });
     setLocation(published);
     setStep(3);
   }
+  if (salesSubmitted) return <SalesPendingMobile l={{ ...location, name, category, profile: { ...(location?.profile || {}), phone, address } }} me={me} onEdit={() => { setSalesSubmitted(false); setStep(0); }} onSignOut={onSignOut || (async () => { await SecureStore.deleteItemAsync("prime.session"); })} />;
   if (step >= 4 && location) return <Card><Title>Your business is live 🎉</Title><Hint>Print or share this QR anywhere. Your QR stays the same when your menu or details change.</Hint><Image accessibilityLabel="Permanent business QR" source={{ uri: `${API_BASE}/locations/${location.id}/qr?format=png&kind=page`, headers: token ? { Authorization: `Bearer ${token}` } : undefined }} style={{ width: 280, height: 280, alignSelf: "center" }} /><Button title="Go to My QR" onPress={done} /></Card>;
-  return <Card><Text style={s.kicker}>STEP {step + 1} OF 4</Text><Title>{step === 0 ? "Create your first business" : step === 1 ? "Tell customers about you" : step === 2 ? "Restaurant setup" : "Choose your plan"}</Title><Hint>Setup is saved as you continue.</Hint>{step === 0 && <><Input title="Business name" value={name} onChangeText={setName} /><Input title="Permanent URL slug" autoCapitalize="none" value={slug} onChangeText={setSlug} /><Hint>Printed QR codes keep this URL.</Hint><Choices values={["restaurant", "cafe", "cloud_kitchen", "retail", "salon", "clinic", "hotel", "professional_services", "generic"]} value={category} onChange={setCategory} /></>}{step === 1 && <><Input title="Description" value={description} onChangeText={setDescription} /><Input title="Phone" value={phone} onChangeText={setPhone} keyboardType="phone-pad" /><Input title="Address" value={address} onChangeText={setAddress} /></>}{step === 2 && restaurant && <><Hint>Ordering is enabled with dine-in and takeaway defaults.</Hint><Input title="Tax percent" value={tax} onChangeText={setTax} keyboardType="decimal-pad" /><Input title="Packaging fee in rupees" value={packaging} onChangeText={setPackaging} keyboardType="decimal-pad" /></>}{step === 2 && !restaurant && <Hint>Your category page is ready. You can add actions and payments after publishing.</Hint>}{step === 3 && <>{(plans.length ? plans : [{ id: "prime", name: "Prime", price_paise: 59900, entitlements: { locations: 10, staff: 20 } }]).map((plan) => <Pressable key={plan.id} onPress={() => setPlanId(plan.id)} style={[s.planChoice, planId === plan.id && s.planChoiceSelected]}><Text style={s.itemTitle}>{plan.name}</Text><Text style={s.price}>{money(plan.price_paise)} / month</Text><Hint>{plan.entitlements?.locations} locations · {plan.entitlements?.staff} staff seats</Hint></Pressable>)}</>}{<Button title={step === 3 ? "Publish Business" : "Continue"} onPress={() => run(next)} disabled={(step === 0 && (!name || !slug)) || (step === 3 && !planId)} />}</Card>;
+  return <Card><Text style={s.kicker}>STEP {step + 1} OF 4</Text><Title>{step === 0 ? "Create your first business" : step === 1 ? "Tell customers about you" : step === 2 ? "Restaurant setup" : "Choose your plan"}</Title><Hint>Setup is saved as you continue.</Hint>{step === 0 && <><Input title="Business name" value={name} onChangeText={(value: string) => { setName(value); if (!slugTouched) setSlug(normalizeSlug(value)); }} /><Input title="Permanent URL" autoCapitalize="none" autoCorrect={false} value={slug} onFocus={() => setSlugTouched(true)} onBlur={() => { const normalized = normalizeSlug(slug); setSlug(normalized); setSlugBlurred(true); setSlugSubmitted(true); }} onChangeText={(value: string) => { setSlugTouched(true); setSlug(value); }} error={(slugSubmitted || slugBlurred) ? (slugAvailability === "unavailable" && slugAvailabilityValue === normalizeSlug(slug) ? "That URL is already taken. Try another one." : slugError) : ""} success={slugAvailability === "available" && slugAvailabilityValue === normalizeSlug(slug) ? "Available" : ""} /><Hint>{slugAvailability === "checking" ? "Checking availability…" : `1qrprime.com/b/${normalizeSlug(slug) || "your-business"} · Your printed QR stays permanent.`}</Hint><Choices values={["restaurant", "cafe", "cloud_kitchen", "retail", "salon", "clinic", "hotel", "professional_services", "generic"]} value={category} onChange={setCategory} /></>}{step === 1 && <><Input title="Description" value={description} onChangeText={setDescription} /><Input title="Phone" value={phone} onChangeText={setPhone} keyboardType="phone-pad" /><Input title="Address" value={address} onChangeText={setAddress} /></>}{step === 2 && restaurant && <><Hint>Ordering is enabled with dine-in and takeaway defaults.</Hint><Input title="Tax percent" value={tax} onChangeText={setTax} keyboardType="decimal-pad" /><Input title="Packaging fee in rupees" value={packaging} onChangeText={setPackaging} keyboardType="decimal-pad" /></>}{step === 2 && !restaurant && <Hint>Your category page is ready. You can add actions and payments after publishing.</Hint>}{step === 3 && (primeEligible ? <>{(plans.length ? plans : [{ id: "prime", name: "Prime", price_paise: 59900, original_price_paise: 159900, max_staff: 5, entitlements: { locations: 10, staff: 5 } }]).filter((plan) => plan.id === "prime").map((plan) => <Pressable key={plan.id} onPress={() => setPlanId(plan.id)} style={[s.planChoice, planId === plan.id && s.planChoiceSelected]}><Text style={s.itemTitle}>{plan.name}</Text><Text style={s.price}><Text style={{ textDecorationLine: "line-through", opacity: 0.55 }}>{money(plan.original_price_paise || 159900)}</Text> {money(plan.price_paise)} / month</Text><Hint>Launch price · up to {plan.max_staff || plan.entitlements?.staff || 5} staff accounts</Hint></Pressable>)}</> : <><Text style={s.itemTitle}>Custom</Text><Hint>Built around your business, with tailored onboarding and setup support.</Hint></>)}<Button title={step === 3 && !primeEligible ? "Request a callback" : step === 3 ? "Publish Business" : "Continue"} onPress={() => run(next)} disabled={(step === 0 && (!name || !slug)) || (step === 3 && primeEligible && !planId)} /></Card>;
 }
 function OwnerPortfolio({ me, request, setLid, setTab }: any) {
   const [metrics, setMetrics] = useState<Record<string, Row>>({});
@@ -742,13 +806,14 @@ function NativeInfoScreen({ title, detail, request, path }: any) {
 }
 
 function NativeStaff({ tenant, request, run }: any) {
-  const [staff, setStaff] = useState<Row[]>([]);
+  const [staff, setStaff] = useState<Row[]>([]), [name, setName] = useState(""), [email, setEmail] = useState(""), [role, setRole] = useState("staff");
   const load = useCallback(async () => setStaff(await request(`/tenants/${tenant.id}/staff`)), [request, tenant.id]);
   useEffect(() => { run(load); }, [load]);
   return <>
     <Text style={s.kicker}>TEAM</Text><Title>Staff</Title><Hint>Manage people who help run your businesses.</Hint>
     {!staff.length && <Card><Text style={s.itemTitle}>No staff members yet</Text><Hint>Staff invitations and role changes are managed by the owner.</Hint></Card>}
-    {staff.map((member) => <Card key={member.id}><Text style={s.itemTitle}>{member.email}</Text><Text style={s.staffRole}>{label(member.role)}</Text></Card>)}
+    {staff.map((member) => <Card key={member.id}><Text style={s.itemTitle}>{member.email}</Text><Text style={s.staffRole}>{label(member.role)}</Text><Hint>{member.permissions ? "Permission profile configured" : "Standard access"}</Hint></Card>)}
+    <Card><Title>Invite staff</Title><Hint>Send a one-time invitation that expires after 72 hours.</Hint><Input title="Name" value={name} onChangeText={setName} /><Input title="Email" value={email} autoCapitalize="none" keyboardType="email-address" onChangeText={setEmail} /><Choices values={["staff", "manager"]} value={role} onChange={setRole} /><Button title="Send invitation" disabled={!name.trim() || !email.trim()} onPress={() => run(async () => { await request(`/tenants/${tenant.id}/staff/invitations`, "POST", { name: name.trim(), email: email.trim(), role, permissions: {} }); setName(""); setEmail(""); })} /></Card>
   </>;
 }
 
@@ -757,6 +822,15 @@ function NativeSupport() {
     <Text style={s.kicker}>HELP</Text><Title>Support</Title><Hint>Get help with your 1QR Prime workspace.</Hint>
     <Card><Text style={s.itemTitle}>Need help?</Text><Hint>Open the support center for account, QR, menu and order assistance.</Hint><Button title="Open support center" onPress={() => Linking.openURL(`${WEB}/support`)} /><Button title="Privacy policy" secondary onPress={() => Linking.openURL(`${WEB}/privacy`)} /></Card>
   </>;
+}
+function PrimePaymentRequired() {
+  return <Card>
+    <Text style={s.kicker}>PRIME CHECKOUT</Text>
+    <Title>Finish setting up Prime</Title>
+    <Hint>Your business is ready. Complete secure checkout before merchant tools become available.</Hint>
+    <Button title="Open secure checkout" onPress={() => Linking.openURL(`${WEB}/`)} />
+    <Hint>Payments are processed securely by Razorpay. Your dashboard will appear after the server confirms payment.</Hint>
+  </Card>;
 }
 
 function MoreMenu({ setTab, l }: any) {
@@ -949,7 +1023,7 @@ function NativeOrders({ l, request, run }: any) {
       <Title>Order desk</Title>
       <Text accessibilityLiveRegion="polite" style={s.hint}>
         {connected
-          ? "Connected · polling every 4 seconds"
+          ? "Updated just now"
           : "Reconnecting · orders remain saved"}
       </Text>
       <Button title="Refresh orders" secondary onPress={load} />
@@ -1205,24 +1279,25 @@ function DeleteAccount({ request, run, done }: any) {
 const s = StyleSheet.create({
   safe: {
     flex: 1,
-    backgroundColor: "#050505",
-    paddingTop: Platform.OS === "ios" ? 58 : 42,
-    paddingBottom: Platform.OS === "ios" ? 24 : 16,
+    backgroundColor: theme.colors.background,
+    paddingTop: Platform.OS === "ios" ? 52 : 28,
+    paddingBottom: Platform.OS === "ios" ? 24 : 12,
   },
   star: { position: "absolute", backgroundColor: "#ffffff", borderRadius: 99, opacity: 0.22 },
   header: {
-    paddingHorizontal: 22,
-    paddingBottom: 20,
+    paddingHorizontal: theme.spacing.xl,
+    paddingBottom: theme.spacing.lg,
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
     borderBottomWidth: 1,
-    borderColor: "rgba(255,255,255,0.1)",
+    borderColor: theme.colors.line,
   },
-  brand: { fontSize: 25, fontWeight: "800", color: "#ffffff" },
+  brand: { fontSize: 22, fontWeight: "800", color: theme.colors.text, letterSpacing: -0.5 },
+  brandLight: { fontWeight: "500", color: theme.colors.muted },
   kicker: {
     fontSize: 10,
-    color: "#aeb4af",
+    color: theme.colors.faint,
     letterSpacing: 1.5,
     fontWeight: "600",
   },
@@ -1231,8 +1306,8 @@ const s = StyleSheet.create({
     marginRight: 20,
     marginTop: -8,
     marginBottom: 2,
-    color: "#d9e7ae",
-    backgroundColor: "#1a1a1a",
+    color: theme.colors.accent,
+    backgroundColor: theme.colors.surfaceRaised,
     paddingHorizontal: 9,
     paddingVertical: 4,
     borderRadius: 6,
@@ -1241,24 +1316,42 @@ const s = StyleSheet.create({
     fontWeight: "700",
   },
   previewTag: { backgroundColor: "#fff1c7", color: "#765a08" },
-  content: { paddingHorizontal: 20, paddingTop: 22 },
+  content: { paddingHorizontal: 18, paddingTop: 10, paddingBottom: 28 },
+  authScreen: { flex: 1, backgroundColor: theme.colors.background },
+  authScroll: { flex: 1 },
+  authContent: { flexGrow: 1, justifyContent: "center", paddingHorizontal: 24, paddingVertical: 32 },
+  authBrand: { flexDirection: "row", alignItems: "center", gap: 9, marginBottom: 34 },
+  authBrandMark: { width: 34, height: 34, textAlign: "center", textAlignVertical: "center", backgroundColor: "#ffffff", color: "#050505", borderRadius: 10, fontSize: 22, fontWeight: "800" },
+  authBrandText: { color: "#ffffff", fontSize: 20, fontWeight: "800", letterSpacing: -0.5 },
+  authBrandMuted: { color: "#999999", fontWeight: "500" },
+  authIntro: { marginBottom: 14 },
+  authCard: { backgroundColor: "#0e0e0e", borderColor: "rgba(255,255,255,0.08)", borderRadius: 18, marginBottom: 0 },
+  authRateLimit: { color: "#f1d18b", backgroundColor: "rgba(208,159,58,.1)", borderWidth: 1, borderColor: "rgba(208,159,58,.2)", borderRadius: 10, padding: 11, fontSize: 12, lineHeight: 18, marginBottom: 12 },
+  salesPending: { paddingHorizontal: 20, paddingTop: 18, paddingBottom: 40 },
+  salesSummary: { borderTopWidth: 1, borderColor: theme.colors.line, marginTop: 18, marginBottom: 20 },
+  salesSummaryRow: { flexDirection: "row", gap: 14, paddingVertical: 13, borderBottomWidth: 1, borderColor: theme.colors.line },
+  salesSummaryLabel: { width: 78, color: theme.colors.faint, fontSize: 12 },
+  salesSummaryValue: { flex: 1, color: theme.colors.text, fontSize: 13 },
+  bootScreen: { flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: theme.colors.background, padding: 24 },
+  bootTitle: { color: "#aeb4af", fontSize: 13, marginBottom: 16 },
   title: {
-    fontSize: 23,
+    fontSize: 28,
     fontWeight: "700",
     color: "#ffffff",
-    marginBottom: 17,
+    marginBottom: 14,
+    letterSpacing: -0.7,
   },
   hero: {
-    backgroundColor: "#111111",
-    padding: 22,
-    borderRadius: 19,
-    marginBottom: 22,
+    backgroundColor: theme.colors.surface,
+    padding: 20,
+    borderRadius: 16,
+    marginBottom: 18,
     borderWidth: 1,
     borderColor: "rgba(255,255,255,0.1)",
   },
-  heroEyebrow: { color: "#8e8e8e", fontSize: 11, letterSpacing: 1.4, fontWeight: "700", marginBottom: 12 },
+  heroEyebrow: { color: theme.colors.faint, fontSize: 10, letterSpacing: 1.4, fontWeight: "700", marginBottom: 10 },
   heroTitle: {
-    fontSize: 31,
+    fontSize: 29,
     color: "#ffffff",
     fontWeight: "700",
     lineHeight: 39,
@@ -1266,21 +1359,23 @@ const s = StyleSheet.create({
   heroText: {
     color: "#a8a8a8",
     lineHeight: 23,
-    marginVertical: 17,
+    marginVertical: 14,
     fontSize: 14,
   },
   card: {
     padding: 20,
-    backgroundColor: "#101010",
-    borderRadius: 15,
+    backgroundColor: theme.colors.surfaceRaised,
+    borderRadius: 16,
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.1)",
-    marginBottom: 18,
+    borderColor: theme.colors.line,
+    marginBottom: 14,
   },
-  planChoice: { padding: 18, borderRadius: 15, borderWidth: 1, borderColor: "rgba(255,255,255,0.1)", backgroundColor: "#171717", marginBottom: 12 },
+  planChoice: { padding: 18, borderRadius: theme.radius.lg, borderWidth: 1, borderColor: theme.colors.line, backgroundColor: theme.colors.surfaceFloating, marginBottom: 12 },
   planChoiceSelected: { borderColor: "#dce7b0", backgroundColor: "#171b15" },
   hint: { color: "#aeb4af", fontSize: 13, lineHeight: 21, marginVertical: 8 },
   field: { marginVertical: 9 },
+  fieldMessage: { color: "#ffb8b8", fontSize: 12, marginTop: 6 },
+  fieldSuccess: { color: "#b8e6bb", fontSize: 12, marginTop: 6 },
   label: {
     fontSize: 12,
     color: "#c6ccc7",
@@ -1291,7 +1386,7 @@ const s = StyleSheet.create({
   input: {
     borderWidth: 1,
     borderColor: "rgba(255,255,255,0.14)",
-    borderRadius: 8,
+    borderRadius: theme.radius.md,
     padding: 12,
     color: "#ffffff",
     minHeight: 46,
@@ -1300,9 +1395,9 @@ const s = StyleSheet.create({
   },
   button: {
     backgroundColor: "#ffffff",
-    paddingVertical: 14,
+    paddingVertical: 13,
     paddingHorizontal: 16,
-    borderRadius: 9,
+    borderRadius: 11,
     alignItems: "center",
     marginVertical: 6,
     minHeight: 46,
@@ -1334,21 +1429,25 @@ const s = StyleSheet.create({
   wrap: { flexDirection: "row", flexWrap: "wrap", gap: 7 },
   nav: {
     flexDirection: "row",
-    paddingHorizontal: 12,
-    borderTopWidth: 1,
+    marginHorizontal: 14,
+    marginBottom: 12,
+    paddingHorizontal: 8,
+    paddingTop: 8,
+    paddingBottom: 8,
+    borderWidth: 1,
     borderColor: "rgba(255,255,255,0.1)",
-    paddingTop: 10,
-    backgroundColor: "#090909",
+    borderRadius: 24,
+    backgroundColor: "rgba(18,18,18,0.92)",
   },
   navButton: {
     flex: 1,
     alignItems: "center",
     justifyContent: "center",
-    paddingVertical: 15,
-    borderRadius: 8,
+    paddingVertical: 10,
+    borderRadius: 17,
   },
   navText: { fontSize: 11, color: "#aeb4af" },
-  navActive: { backgroundColor: "#ffffff" },
+  navActive: { backgroundColor: "#e9f2c4" },
   error: {
     backgroundColor: "#281815",
     color: "#ffb7a8",
@@ -1366,8 +1465,8 @@ const s = StyleSheet.create({
   businessName: { color: "#ffffff", fontSize: 22, fontWeight: "700", marginBottom: 8 },
   businessChevron: { color: "#ffffff", fontSize: 28, paddingHorizontal: 10 },
   openPill: { color: "#d9e7ae", fontSize: 10, letterSpacing: 1.2, fontWeight: "800" },
-  quickGrid: { flexDirection: "row", flexWrap: "wrap", gap: 10, marginBottom: 18 },
-  quickAction: { width: "48%", minHeight: 108, backgroundColor: "#101010", borderWidth: 1, borderColor: "rgba(255,255,255,0.1)", borderRadius: 14, padding: 15 },
+  quickGrid: { flexDirection: "row", flexWrap: "wrap", gap: 9, marginBottom: 18 },
+  quickAction: { width: "48%", minHeight: 102, backgroundColor: "#121313", borderWidth: 1, borderColor: theme.colors.line, borderRadius: 18, padding: 15 },
   quickActionTitle: { color: "#ffffff", fontSize: 16, fontWeight: "700", marginBottom: 8 },
   quickActionDetail: { color: "#969696", fontSize: 12, lineHeight: 17 },
   arrow: { color: "#ffffff", fontSize: 20, alignSelf: "flex-end", marginTop: 8 },

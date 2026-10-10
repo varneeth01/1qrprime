@@ -1,4 +1,5 @@
 export type Any = Record<string, any>;
+import { userFacingError, type AppErrorPayload } from "../../../shared/app-errors";
 
 export class ApiError extends Error {
   status: number;
@@ -10,6 +11,8 @@ export class ApiError extends Error {
     this.status = status;
     this.data = data;
   }
+
+  get code() { return this.data?.code as string | undefined; }
 }
 
 export async function api(
@@ -38,8 +41,14 @@ export async function api(
     }
   }
 
-  if (!res.ok)
-    throw new ApiError(data.error || "Connection failed", res.status, data);
+  if (!res.ok) {
+    const contextual = path.startsWith("/billing/checkout/order") && [404, 500, 502, 503].includes(res.status)
+      ? { ...data, code: "PAYMENT_UNAVAILABLE" }
+      : path.startsWith("/billing/checkout/verify") && [400, 404, 500, 502, 503].includes(res.status)
+        ? { ...data, code: "PAYMENT_VERIFICATION_FAILED" }
+        : data;
+    throw new ApiError(userFacingError(res.status, contextual as AppErrorPayload), res.status, contextual);
+  }
   return data;
 }
 

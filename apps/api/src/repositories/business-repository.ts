@@ -30,7 +30,7 @@ export class BusinessRepository {
   }
 
   getMembership(userId: string, tenantId: string) {
-    return this.db.get<any>("SELECT role FROM memberships WHERE user_id=? AND tenant_id=?", [userId, tenantId]);
+    return this.db.get<any>("SELECT role,permissions FROM memberships WHERE user_id=? AND tenant_id=?", [userId, tenantId]);
   }
 
   updatePublished(tx: DbTransaction, input: { id: string; name: string; category: string; profile: string; published: boolean; status: string; completed: boolean; version: number }) {

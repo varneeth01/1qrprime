@@ -23,7 +23,7 @@ export class PaymentRepository {
   constructor(private readonly db: AsyncDatabase) {}
 
   listRoutes(locationId: string) {
-    return this.db.all<any>("SELECT * FROM routes WHERE location_id=? ORDER BY id", [locationId]);
+    return this.db.all<any>("SELECT r.*,a.status owner_approval_status,a.expires_at owner_approval_expires_at,a.approved_at owner_approved_at FROM routes r LEFT JOIN payment_route_approvals a ON a.route_id=r.id WHERE r.location_id=? ORDER BY r.id", [locationId]);
   }
 
   listRoutesForTenant(tenantId: string) {
@@ -38,6 +38,22 @@ export class PaymentRepository {
       "INSERT INTO routes(id,location_id,label,provider,vpa,payee,state) VALUES (?,?,?,'basic_upi',?,?,'draft')",
       [input.id, input.locationId, input.label, input.vpa, input.payee],
     );
+  }
+
+  createOwnerApproval(tx: DbTransaction, input: { id: string; routeId: string; tenantId: string; requestedBy: string; ownerUserId: string; tokenHash: string; expiresAt: string }) {
+    return tx.run("INSERT INTO payment_route_approvals(id,route_id,tenant_id,requested_by,owner_user_id,token_hash,status,expires_at) VALUES (?,?,?,?,?,?,?,?)", [input.id, input.routeId, input.tenantId, input.requestedBy, input.ownerUserId, input.tokenHash, "pending_owner_approval", input.expiresAt]);
+  }
+
+  approval(tokenHash: string) {
+    return this.db.get<any>("SELECT a.*,r.label,r.vpa,r.payee,t.name business_name FROM payment_route_approvals a JOIN routes r ON r.id=a.route_id JOIN tenants t ON t.id=a.tenant_id WHERE a.token_hash=?", [tokenHash]);
+  }
+
+  approvalForRoute(routeId: string) {
+    return this.db.get<any>("SELECT * FROM payment_route_approvals WHERE route_id=? ORDER BY created_at DESC LIMIT 1", [routeId]);
+  }
+
+  approveOwner(tx: DbTransaction, id: string, ownerId: string) {
+    return tx.run("UPDATE payment_route_approvals SET status='owner_approved',approved_at=?,approved_by=? WHERE id=? AND owner_user_id=? AND status='pending_owner_approval' AND expires_at>?", [new Date().toISOString(), ownerId, id, ownerId, new Date().toISOString()]);
   }
 
   requestVerification(tx: DbTransaction, id: string, locationId: string, evidence: string) {

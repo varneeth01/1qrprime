@@ -108,3 +108,31 @@ The bounded live test created two synthetic accounts. Tenant B was deleted succe
 # INCOMPLETE — REQUIRED SECURITY TESTS NOT EXECUTED
 
 The critical reason is the absence of authenticated production web/mobile credentials/session and the locked physical Android device. Production health is currently passing, but this report does not claim security acceptance or production readiness.
+
+## Continuation update — 2026-10-09
+
+- Local HEAD: `fa9c4b84decce2d8316c015c8a25ce0cbe1f4e09`.
+- Remote `coolify-production`: `bcf982445f14ed1f840bdf0e6066811cc101cdab`; the local security commit is not pushed.
+- Fresh local checks: typecheck PASS, API build PASS, web build PASS, SQLite 27/27 PASS, inventory 0/0/0.
+- Production API health/readiness: PASS (HTTP 200 for both).
+- Live CORS still advertises only `GET,HEAD,POST` for mutation preflight; the local source fix includes PUT/PATCH/DELETE/OPTIONS and requires redeployment before live retest.
+- Disposable PostgreSQL regression remains not run: Docker is installed but its daemon is unavailable, and no local PostgreSQL server is listening.
+- TECNO KN3 is now awake and the app launches to the production sign-in screen. Authenticated Android QA remains blocked because no disposable credentials/session are available. The installed APK is pre-hardening; a fresh hardened APK could not be produced because the configured Android build-tools/NDK are unavailable locally.
+- The previously identified synthetic Tenant A account remains; it cannot be safely deleted without its retained credential/token. No deletion attempt was made.
+- Android authenticated QA did not begin because a hardened replacement APK could not be built. The currently installed APK remains the earlier artifact and is not evidence for the local hardening source changes.
+# Commercial/payment acceptance update
+
+- Razorpay order creation and callback verification are server-side, owner-only,
+  category-gated, server-priced at ₹59900 paise, and HMAC-SHA256 verified with
+  constant-time comparison.
+- The web client now lazy-loads Standard Checkout and handles cancellation,
+  provider failure, script failure, and verification failure without activating
+  Prime prematurely.
+- Admin billing records are protected by admin authorization and the response
+  excludes signatures, raw provider payloads, and secrets; regression coverage
+  is in `apps/api/test/security.test.ts`.
+- Live Razorpay test execution was not performed because both runtime Razorpay
+  credentials are missing. No credentials were added to the repository.
+## Publish flow follow-up
+
+The local security fix adds the owner-only, tenant-scoped `POST /api/locations/:lid/publish` contract with Prime/eligibility gating, stable error codes, immutable `publicId` preservation, and idempotent repeat behavior. The deployed production API was probed without credentials using a non-existent disposable identifier and returned HTTP 404 `Route POST:/api/locations/:lid/publish not found`; this is an expected pre-redeployment version mismatch, not evidence of cross-tenant access. Local regression coverage passed. No production mutation, push, or deployment was performed.

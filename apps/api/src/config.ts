@@ -30,6 +30,8 @@ export const envSchema = z.object({
   SMTP_FROM_EMAIL: z.string().email().optional(),
   AWS_REGION: z.string().default("ap-south-1"),
   SUPPORT_EMAIL: z.string().email().optional(),
+  RAZORPAY_KEY_ID: z.string().optional(),
+  RAZORPAY_KEY_SECRET: z.string().optional(),
 });
 export type Config = z.infer<typeof envSchema>;
 export function config() {

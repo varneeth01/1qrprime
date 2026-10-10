@@ -1,0 +1,11 @@
+User-agent: *
+Allow: /
+Disallow: /login
+Disallow: /signup
+Disallow: /recovery
+Disallow: /reset
+Disallow: /verify
+Disallow: /app
+Disallow: /admin
+Disallow: /api
+Sitemap: https://1qrprime.com/sitemap.xml

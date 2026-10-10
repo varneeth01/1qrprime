@@ -41,7 +41,12 @@ import {
   Pencil,
 } from "lucide-react";
 import { api, ApiError, updateLocation, money, label, type Any } from "./api";
+import { emailFormatError, normalizeSlugSuggestion, passwordFormatError, slugFormatError } from "./validation";
+import { SLUG_AVAILABILITY_PATH } from "../../../shared/slug";
+import { canRenderMerchantNavigation, resolveProductState } from "../../../shared/product-state";
+import { isMarketingPath, MarketingRouter } from "./marketing";
 import "./style.css";
+import "./marketing.css";
 function ErrorBox({ error }: { error: string }) {
   return error ? (
     <div role="alert" className="error">
@@ -49,11 +54,14 @@ function ErrorBox({ error }: { error: string }) {
     </div>
   ) : null;
 }
-function Field({ title, ...props }: any) {
+function Field({ title, error = "", success = "", description = "", ...props }: any) {
   return (
     <label className="field">
       <span>{title}</span>
       <input {...props} />
+      {description && !error && !success && <small>{description}</small>}
+      {error && <small className="field-message error-text" role="alert">{error}</small>}
+      {!error && success && <small className="field-message success-text">{success}</small>}
     </label>
   );
 }
@@ -63,9 +71,25 @@ function Badge({ children, tone = "" }: any) {
 const browserOrigin = window.location.origin;
 const localOrigin = /^(localhost|127\.0\.0\.1|0\.0\.0\.0)$/i.test(window.location.hostname);
 const temporaryPreviewOrigin = /\.trycloudflare\.com$/i.test(window.location.hostname);
-function EnvironmentBadge() {
-  const production = window.location.hostname === "1qrprime.com" || window.location.hostname === "www.1qrprime.com";
-  return localOrigin ? <Badge>LOCAL</Badge> : temporaryPreviewOrigin ? <Badge tone="amber">PREVIEW</Badge> : production ? <Badge tone="green">PRODUCTION</Badge> : <Badge tone="green">STAGING</Badge>;
+let razorpayLoader: Promise<void> | null = null;
+function loadRazorpayCheckout() {
+  if ((window as any).Razorpay) return Promise.resolve();
+  if (razorpayLoader) return razorpayLoader;
+  razorpayLoader = new Promise((resolve, reject) => {
+    const existing = document.querySelector<HTMLScriptElement>('script[src="https://checkout.razorpay.com/v1/checkout.js"]');
+    if (existing) {
+      existing.addEventListener("load", () => resolve());
+      existing.addEventListener("error", () => reject(new Error("Secure checkout couldn't load")));
+      return;
+    }
+    const script = document.createElement("script");
+    script.src = "https://checkout.razorpay.com/v1/checkout.js";
+    script.async = true;
+    script.onload = () => resolve();
+    script.onerror = () => reject(new Error("Secure checkout couldn't load"));
+    document.head.appendChild(script);
+  });
+  return razorpayLoader;
 }
 function Empty({ title, children }: any) {
   return (
@@ -91,13 +115,37 @@ function Brand() {
     </a>
   );
 }
-function Auth({ done }: { done: () => void }) {
-  const [register, setRegister] = useState(false),
+function Auth({ done, initialRegister = false }: { done: () => void; initialRegister?: boolean }) {
+  const [register, setRegister] = useState(initialRegister),
     [error, setError] = useState(""),
-    [busy, setBusy] = useState(false);
+    [rateLimitSeconds, setRateLimitSeconds] = useState(0),
+    [busy, setBusy] = useState(false),
+    [email, setEmail] = useState(""),
+    [password, setPassword] = useState(""),
+    [name, setName] = useState(""),
+    [touched, setTouched] = useState<Record<string, boolean>>({}),
+    [submitted, setSubmitted] = useState(false);
+  useEffect(() => {
+    if (!rateLimitSeconds) return;
+    const timer = window.setInterval(() => setRateLimitSeconds((value) => Math.max(0, value - 1)), 1000);
+    return () => window.clearInterval(timer);
+  }, [rateLimitSeconds]);
+  const emailError = emailFormatError(email),
+    passwordError = passwordFormatError(password),
+    nameError = !name.trim() ? "Enter your business or organisation name." : name.trim().length < 2 ? "Use at least 2 characters." : "";
+  function markTouched(field: string) {
+    setTouched((current) => ({ ...current, [field]: true }));
+  }
+  function changeField(setter: (value: string) => void, value: string) {
+    setter(value);
+    if (error) setError("");
+  }
+  function show(field: string, fieldError: string) {
+    return (submitted || touched[field]) ? fieldError : "";
+  }
   return (
-    <div className="auth">
-      <section className="auth-story">
+    <div className="auth auth-v2">
+      <section className="auth-story auth-hero">
         <Brand />
         <div>
           <Badge>BUILT FOR LOCAL BUSINESS</Badge>
@@ -125,35 +173,47 @@ function Auth({ done }: { done: () => void }) {
         </div>
         <small>1QR Prime · Made for merchants in India</small>
       </section>
-      <section className="auth-form">
-        <Badge>MERCHANT CONSOLE</Badge>
-        <h2>{register ? "Let’s set up your business" : "Welcome back"}</h2>
+      <section className="auth-form auth-card">
+        <Brand />
+        <h2>{register ? "Create your account" : "Welcome back"}</h2>
         <p>
           {register
-            ? "Start with a free account. Make your first location yours."
-            : "Your business is ready when you are."}
+            ? "Start setting up your business in a few minutes."
+            : "Sign in to manage your business."}
         </p>
-        <ErrorBox error={error} />
+        {rateLimitSeconds > 0 && <div className="auth-rate-limit" role="status">Too many attempts. Try again in {rateLimitSeconds} seconds.</div>}
+        {error && <div className="auth-inline-error" role="alert">{error}</div>}
         <form
+          noValidate
           onSubmit={async (e) => {
             e.preventDefault();
+            setSubmitted(true);
+            setTouched({ email: true, password: true, ...(register ? { name: true } : {}) });
+            if (emailError || passwordError || (register && nameError)) return;
             setBusy(true);
             setError("");
-            const f = new FormData(e.currentTarget);
             try {
               await api(
                 `/auth/${register ? "register" : "login"}`,
                 "POST",
-                Object.fromEntries(f),
+                { email: email.trim(), password, ...(register ? { name: name.trim() } : {}) },
               );
               done();
             } catch (e) {
               if (e instanceof ApiError && !register && e.status === 401)
                 setError("Email or password is incorrect.");
-              else if (e instanceof ApiError && register && e.status === 409)
-                setError("Unable to create this account. If you already registered, sign in or use password recovery.");
+              else if (e instanceof ApiError && e.status === 429) {
+                setRateLimitSeconds(Math.max(1, Number(e.data?.retryAfterSeconds || 60)));
+                setError("");
+              }
+              else if (e instanceof ApiError && register && e.code === "EMAIL_ALREADY_EXISTS")
+                setError("An account with this email already exists. Sign in instead or use password recovery.");
+              else if (/failed to fetch|network|timed out/i.test((e as Error).message))
+                setError("Couldn't connect. Check your connection and try again.");
+              else if (e instanceof ApiError)
+                setError(e.message);
               else
-                setError((e as Error).message);
+                setError("Something went wrong. Please try again.");
             } finally {
               setBusy(false);
             }
@@ -162,53 +222,86 @@ function Auth({ done }: { done: () => void }) {
           {register && (
             <Field
               title="Business / organisation name"
-              name="name"
-              minLength={2}
-              required
+              value={name}
+              onChange={(e: any) => changeField(setName, e.target.value)}
+              onBlur={() => markTouched("name")}
+              error={show("name", nameError)}
               autoComplete="organization"
             />
           )}
           <Field
             title="Email address"
-            name="email"
-            type="email"
-            required
+            value={email}
+            onChange={(e: any) => changeField(setEmail, e.target.value)}
+            onBlur={() => markTouched("email")}
+            error={show("email", emailError)}
+            inputMode="email"
+            type="text"
             autoComplete="email"
           />
           <Field
             title="Password"
-            name="password"
+            value={password}
+            onChange={(e: any) => changeField(setPassword, e.target.value)}
+            onBlur={() => markTouched("password")}
+            error={show("password", passwordError)}
             type="password"
-            minLength={12}
             maxLength={128}
-            required
+            description="Use at least 12 characters."
             autoComplete={register ? "new-password" : "current-password"}
           />
-          <small>Use at least 12 characters.</small>
-          <button className="primary wide" disabled={busy}>
-            {busy ? "Please wait…" : register ? "Create account" : "Sign in"}{" "}
-            <ArrowUpRight size={17} />
+          <button className="primary wide" disabled={busy || rateLimitSeconds > 0}>
+            {busy ? (register ? "Creating account…" : "Signing in…") : register ? "Create account" : "Sign in"}
           </button>
         </form>
-        <button
-          className="text-button"
-          onClick={() => {
-            setRegister(!register);
-            setError("");
-          }}
-        >
-          {register
-            ? "Already registered? Sign in"
-            : "New to 1QR Prime? Create an account"}
-        </button>
-        <a href="/recovery">Forgot your password?</a>
-        <footer>
+        <div className="auth-links">
+          {register ? <span>Already have an account? <button className="text-button" onClick={() => { setRegister(false); setError(""); }}>Sign in</button></span> : <><a href="/recovery">Forgot password?</a><span>New to 1QR Prime? <button className="text-button" onClick={() => { setRegister(true); setError(""); }}>Create account</button></span></>}
+        </div>
+        <footer className="auth-footer">
           <a href="/privacy">Privacy</a>
-          <a href="/support">Help & support</a>
+          <a href="/terms">Terms</a>
+          <a href="/support">Support</a>
         </footer>
       </section>
     </div>
   );
+}
+function RouteRedirect({ to }: { to: string }) {
+  useEffect(() => {
+    window.location.replace(to);
+  }, [to]);
+  return <div className="boot-screen"><Brand /><Skeleton className="boot-line" /><p>Opening your workspace</p></div>;
+}
+function StaffInvite({ token }: { token: string }) {
+  const [invite, setInvite] = useState<Any | null>(null), [password, setPassword] = useState(""), [error, setError] = useState(""), [accepted, setAccepted] = useState(false), [busy, setBusy] = useState(false);
+  useEffect(() => { api(`/staff/invitations/${token}`).then(setInvite).catch((e) => setError((e as Error).message)); }, [token]);
+  if (accepted) return <div className="auth"><section className="auth-form"><Brand /><Badge tone="green">INVITATION ACCEPTED</Badge><h2>You’re part of the team</h2><p>Sign in to open your new business workspace.</p><a className="button primary wide" href="/">Open workspace <ArrowUpRight size={17} /></a></section></div>;
+  return <div className="auth"><section className="auth-form"><Brand /><Badge>STAFF INVITATION</Badge><h2>Join 1QR Prime</h2>{invite ? <><p>{invite.name}, you’ve been invited as <strong>{invite.role}</strong>.</p><p className="muted">{invite.email}</p><ErrorBox error={error} /><form onSubmit={async (e) => { e.preventDefault(); setBusy(true); setError(""); try { await api(`/staff/invitations/${token}/accept`, "POST", { password, name: invite.name }); setAccepted(true); } catch (e) { setError((e as Error).message); } finally { setBusy(false); } }}><Field title="Create your password" name="password" type="password" minLength={12} required value={password} onChange={(e: any) => setPassword(e.target.value)} autoComplete="new-password" /><small>Use at least 12 characters. This invitation expires soon and can only be used once.</small><button className="primary wide" disabled={busy}>{busy ? "Accepting…" : "Accept invitation"} <Check size={17} /></button></form></> : <><ErrorBox error={error} />{!error && <><Skeleton className="boot-line" /><p>Checking invitation…</p></>}</>}</section></div>;
+}
+function PaymentRouteConfirmation({ token }: { token: string }) {
+  const [approval, setApproval] = useState<Any | null>(null), [error, setError] = useState(""), [confirmed, setConfirmed] = useState(false), [busy, setBusy] = useState(false);
+  useEffect(() => { api(`/payment-routes/confirm/${token}`).then(setApproval).catch((e) => setError((e as Error).message)); }, [token]);
+  return <div className="auth"><section className="auth-form"><Brand /><Badge tone={confirmed ? "green" : ""}>{confirmed ? "CONFIRMED" : "PAYMENT DESTINATION"}</Badge>{confirmed ? <><h2>Payment destination confirmed</h2><p>Owner approval is recorded. Independent verification is still required before this destination can become active.</p><a className="button primary wide" href="/">Return to workspace</a></> : approval ? <><h2>Confirm this destination?</h2><p>{approval.business}</p><div className="card-soft"><strong>{approval.vpa}</strong><small>{approval.payee}</small></div><ErrorBox error={error} /><button className="primary wide" disabled={busy} onClick={async () => { setBusy(true); setError(""); try { await api(`/payment-routes/confirm/${token}`, "POST"); setConfirmed(true); } catch (e) { setError((e as Error).message); } finally { setBusy(false); } }}>{busy ? "Confirming…" : "Confirm payment destination"} <Check size={17} /></button><p className="muted">If you did not request this change, do not approve it.</p></> : <><ErrorBox error={error} />{!error && <><Skeleton className="boot-line" /><p>Checking confirmation link…</p></>}</>}</section></div>;
+}
+function SalesPending({ name, category, email, phone, city, onEdit, onSignOut }: any) {
+  return <div className="sales-pending-shell">
+    <Brand />
+    <span className="eyebrow">REQUEST RECEIVED</span>
+    <h1>Thanks — we’ll take it from here.</h1>
+    <p>We’re currently onboarding businesses in your category personally. Our team will contact you soon.</p>
+    <dl className="sales-summary">
+      <div><dt>Business</dt><dd>{name || "—"}</dd></div>
+      <div><dt>Category</dt><dd>{label(category || "business")}</dd></div>
+      <div><dt>Email</dt><dd>{email || "—"}</dd></div>
+      <div><dt>Phone</dt><dd>{phone || "Not provided"}</dd></div>
+      <div><dt>City</dt><dd>{city || "Not provided"}</dd></div>
+    </dl>
+    <div className="sales-actions">
+      <button className="primary" onClick={onEdit}>Edit business details</button>
+      <a className="button secondary" href="/support">Contact support</a>
+      <button className="text-button" onClick={onSignOut}>Sign out</button>
+    </div>
+  </div>;
 }
 const nav = [
   ["portfolio", "Portfolio", LayoutDashboard],
@@ -229,7 +322,8 @@ function App() {
     [loading, setLoading] = useState(true),
     [section, setSection] = useState("portfolio"),
     [lid, setLid] = useState(""),
-    [error, setError] = useState("");
+    [error, setError] = useState(""),
+    [salesEditing, setSalesEditing] = useState(false);
   const refresh = useCallback(async () => {
     try {
       const m = await api("/me");
@@ -239,6 +333,9 @@ function App() {
           ? old
           : m.locations[0]?.id || "",
       );
+      // A newly registered or legacy account without a business should enter
+      // the business setup flow directly, matching the native experience.
+      if (!m.locations.length && !m.adminRole) setSection((current) => current === "portfolio" ? "new" : current);
     } catch {
       setMe(null);
     } finally {
@@ -249,25 +346,42 @@ function App() {
     refresh();
   }, [refresh]);
   const pathname = window.location.pathname;
+  if (isMarketingPath(pathname)) return <MarketingRouter path={pathname} />;
+  if (pathname === "/login" || pathname === "/signup") {
+    if (loading) return <div className="boot-screen"><Brand /><Skeleton className="boot-line" /><p>Preparing your workspace</p></div>;
+    if (!me) return <Auth done={refresh} initialRegister={pathname === "/signup"} />;
+    return <RouteRedirect to="/app" />;
+  }
   if (["/reset", "/verify", "/recovery"].includes(pathname))
     return <Recovery mode={pathname.slice(1)} />;
+  if (pathname.startsWith("/staff/invite/"))
+    return <StaffInvite token={decodeURIComponent(pathname.split("/").filter(Boolean).at(-1) || "")} />;
+  if (pathname.startsWith("/payment-routes/confirm/"))
+    return <PaymentRouteConfirmation token={decodeURIComponent(pathname.split("/").filter(Boolean).at(-1) || "")} />;
   if (pathname.startsWith("/b/") || pathname.startsWith("/q/")) {
     const parts = pathname.split("/").filter(Boolean);
     const legacy = parts[0] === "b";
     const initialView = legacy ? "menu" : parts[2] === "menu" ? "menu" : parts[2] === "pay" ? "pay" : "hub";
     return <Customer slug={decodeURIComponent(parts[1])} initialView={initialView} />;
   }
-  if (["/privacy", "/support"].includes(pathname))
-    return <Policy support={pathname === "/support"} />;
   if (loading) return <div className="boot-screen"><Brand /><Skeleton className="boot-line" /><p>Preparing your workspace</p></div>;
   if (!me) return <Auth done={refresh} />;
   const l = me.locations.find((x: Any) => x.id === lid),
     tenant =
       me.tenants.find((t: Any) => t.id === l?.tenant_id) || me.tenants[0];
-  const needsOnboarding = !!l && !l.published && !l.onboarding?.completed;
+  const productState = resolveProductState({ ...me, activeLocationId: l?.id });
+  const needsOnboarding = productState === "AUTHENTICATED_ACCOUNT_SETUP";
+  const paymentRequired = productState === "PRIME_PAYMENT_REQUIRED";
+  const salesPending = productState === "SALES_CONTACT_PENDING";
+  if (!canRenderMerchantNavigation(productState) && !me.adminRole)
+    return (
+      <div className="auth auth-v2">
+        {needsOnboarding ? <section className="auth-form auth-card"><Brand /><NewLocation me={me} initial={l} done={refresh} /></section> : paymentRequired ? <section className="auth-form auth-card"><Brand /><NewLocation me={me} initial={l} forcePayment done={refresh} /></section> : salesEditing ? <section className="auth-form auth-card"><Brand /><NewLocation me={me} initial={l} startAt={0} done={async () => { setSalesEditing(false); await refresh(); }} onSalesSubmitted={async () => { setSalesEditing(false); await refresh(); }} /></section> : <SalesPending name={l?.name} category={l?.category} email={me.email} phone={l?.profile?.phone} city={l?.profile?.city || l?.profile?.address} onEdit={() => setSalesEditing(true)} onSignOut={async () => { await api("/auth/logout", "POST"); window.location.replace("/login"); }} />}
+      </div>
+    );
   return (
-    <div className="shell">
-      <aside className="sidebar">
+    <div className="shell platform-shell">
+      <aside className="sidebar platform-sidebar">
         <Brand />
         <div className="workspace-label">WORKSPACE</div>
         <select
@@ -286,7 +400,7 @@ function App() {
             </option>
           ))}
         </select>
-        <nav>
+        <nav aria-label="Merchant workspace">
           {nav
             .filter(
               ([key]) =>
@@ -309,10 +423,10 @@ function App() {
                 {key === "orders" && <span className="nav-dot" />}
               </button>
             ))}
-          <button onClick={() => setSection("new")}>
+          {l?.role === "owner" && <button onClick={() => setSection("new")}>
             <Plus size={19} />
             Add business
-          </button>
+          </button>}
           {me.adminRole && (
             <button onClick={() => setSection("admin")}>
               <ShieldCheck size={19} />
@@ -337,27 +451,20 @@ function App() {
           </button>
         </div>
       </aside>
-      <div className="workspace">
-        <header className="topbar">
+      <div className="workspace platform-workspace">
+        <header className="topbar platform-topbar">
           <span>
             Workspace <ChevronRight size={14} />{" "}
             <strong>
               {nav.find((x) => x[0] === section)?.[1] || "Support"}
             </strong>
           </span>
-          <div>
-            <Badge tone="green">{tenant?.plan_name} plan</Badge>
-            <EnvironmentBadge />
-            <button
-              className="icon-button"
-              aria-label="Refresh workspace"
-              onClick={refresh}
-            >
-              <RefreshCw size={17} />
-            </button>
+          <div className="topbar-context">
+            <span className="topbar-business-status">{tenant?.name || "Workspace"}</span>
+            {l?.published && <Badge tone="green">Live</Badge>}
           </div>
         </header>
-        <main>
+        <main className="page-content">
           <ErrorBox error={error} />
           {section === "admin" ? (
             <Admin />
@@ -391,12 +498,12 @@ function App() {
                   </div>
                   <h1>
                     {section === "overview"
-                      ? "A little closer to your customers."
+                      ? `Good to see you, ${l.name}.`
                       : nav.find((x) => x[0] === section)?.[1]}
                   </h1>
                   <p>
                     {section === "overview"
-                      ? "Your business, orders and next steps. All in one place."
+                      ? "A clear view of today’s work, customer activity and what needs attention."
                       : `Manage ${l.name} with confidence.`}
                   </p>
                 </div>
@@ -630,11 +737,16 @@ function Stat({ title, value, note }: any) {
     </div>
   );
 }
-function NewLocation({ me, done, initial }: any) {
+function NewLocation({ me, done, initial, forcePayment = false, startAt, onSalesSubmitted }: any) {
   const [draft, setDraft] = useState<Any | null>(initial || null),
-    [step, setStep] = useState(initial?.onboarding?.step || 0),
+    [step, setStep] = useState(forcePayment ? 4 : (startAt ?? initial?.onboarding?.step ?? 0)),
     [name, setName] = useState(initial?.name || ""),
     [slug, setSlug] = useState(initial?.slug || ""),
+    [slugTouched, setSlugTouched] = useState(!!initial?.slug),
+    [slugBlurred, setSlugBlurred] = useState(false),
+    [slugSubmitted, setSlugSubmitted] = useState(false),
+    [slugAvailability, setSlugAvailability] = useState<"idle" | "checking" | "available" | "unavailable">("idle"),
+    [slugAvailabilityValue, setSlugAvailabilityValue] = useState(""),
     [category, setCategory] = useState(initial?.category || "restaurant"),
     [description, setDescription] = useState(initial?.profile?.description || ""),
     [address, setAddress] = useState(initial?.profile?.address || ""),
@@ -646,10 +758,41 @@ function NewLocation({ me, done, initial }: any) {
     [itemPrice, setItemPrice] = useState(""),
     [plans, setPlans] = useState<Any[]>([]),
     [planId, setPlanId] = useState(initial?.plan_id || "prime"),
+    [salesSubmitted, setSalesSubmitted] = useState(false),
+    [paymentVerified, setPaymentVerified] = useState(initial?.billing_state === "active"),
     [error, setError] = useState(""),
     [busy, setBusy] = useState(false);
+  const originalSlug = useRef(initial?.slug || ""),
+    availabilityRequest = useRef(0);
   useEffect(() => { api("/plans").then((value) => setPlans(value as Any[])).catch(() => setPlans([])); }, []);
+  const slugError = slugFormatError(slug);
+  useEffect(() => {
+    const value = normalizeSlugSuggestion(slug);
+    const requestId = ++availabilityRequest.current;
+    if (!value || value === originalSlug.current || slugError || value.length < 3) {
+      setSlugAvailability("idle");
+      setSlugAvailabilityValue("");
+      return;
+    }
+    setSlugAvailability("checking");
+    setSlugAvailabilityValue(value);
+    const timer = window.setTimeout(() => {
+      api(`${SLUG_AVAILABILITY_PATH}?slug=${encodeURIComponent(value)}`)
+        .then((result) => {
+          if (requestId === availabilityRequest.current && value === normalizeSlugSuggestion(slug))
+            setSlugAvailability(result.available ? "available" : "unavailable");
+        })
+        .catch(() => {
+          if (requestId === availabilityRequest.current) {
+            setSlugAvailability("idle");
+            setSlugAvailabilityValue("");
+          }
+        });
+    }, 500);
+    return () => window.clearTimeout(timer);
+  }, [slug, slugError]);
   const restaurant = ["restaurant", "cafe", "cloud_kitchen"].includes(category);
+  const primeEligible = ["restaurant", "cafe", "hotel"].includes(category);
   const profile = () => ({
     ...(draft?.profile || {}), description, address, phone, hours,
     orderEnabled: restaurant,
@@ -659,11 +802,21 @@ function NewLocation({ me, done, initial }: any) {
     packagingFeePaise: Math.round(Number(packaging || 0) * 100),
   });
   async function save(nextStep: number, completed = false) {
+    if (step === 0) {
+      setSlugSubmitted(true);
+      const canonicalSlug = normalizeSlugSuggestion(slug);
+      const canonicalError = slugFormatError(canonicalSlug);
+      setSlug(canonicalSlug);
+      if (canonicalError || (slugAvailabilityValue === canonicalSlug && slugAvailability === "unavailable") || (slugAvailabilityValue === canonicalSlug && slugAvailability === "checking")) {
+        setError(slugAvailability === "unavailable" ? "That URL is already taken. Try another one." : slugAvailability === "checking" ? "Checking your URL…" : canonicalError);
+        return null;
+      }
+    }
     setBusy(true); setError("");
     try {
       let next = draft;
       if (!next) {
-        next = await api("/locations", "POST", { tenantId: me.tenants.find((t: Any) => t.role === "owner")?.id, name, slug, category });
+        next = await api("/locations", "POST", { tenantId: me.tenants.find((t: Any) => t.role === "owner")?.id, name, slug: normalizeSlugSuggestion(slug), category });
         setDraft(next);
       }
       if (!next) throw new Error("Unable to create the business draft");
@@ -683,29 +836,73 @@ function NewLocation({ me, done, initial }: any) {
     } catch (e) { setError((e as Error).message); } finally { setBusy(false); }
   }
   async function publish() {
+    if (!primeEligible) {
+      setBusy(true); setError("");
+      try {
+        await api("/sales/leads", "POST", { businessName: name, category, email: me.email, phone: phone || "Not provided", city: address || "Not provided", locationCount: 1, notes: "Requested a custom onboarding conversation." });
+        setSalesSubmitted(true);
+        await onSalesSubmitted?.();
+      } catch (e) { setError((e as Error).message); } finally { setBusy(false); }
+      return;
+    }
     const updated = await save(6, false);
     if (!updated) return;
     setBusy(true); setError("");
     try {
-      await api(`/tenants/${updated.tenant_id}/plan`, "PUT", { planId });
-      const live = await updateLocation(updated.id, { name, category, profile: profile(), published: true, version: updated.version });
-      setDraft(live); setStep(6);
+      if (!paymentVerified) throw new Error("Complete secure checkout before publishing Prime.");
+      const result = await api(`/locations/${updated.id}/publish`, "POST");
+      setDraft(result.location || updated); setStep(6);
     } catch (e) { setError((e as Error).message); } finally { setBusy(false); }
   }
+  async function startPrimeCheckout() {
+    if (!draft || !primeEligible) return;
+    setBusy(true); setError("");
+    try {
+      const order = await api("/billing/checkout/order", "POST", { planCode: "prime", locationId: draft.id });
+      await loadRazorpayCheckout();
+      await new Promise<void>((resolve) => {
+        let settled = false;
+        const finish = () => { if (!settled) { settled = true; resolve(); } };
+        const checkout = new (window as any).Razorpay({
+          key: order.keyId,
+          amount: order.amount,
+          currency: order.currency,
+          order_id: order.order_id || order.orderId,
+          name: "1QR Prime",
+          description: "Prime plan",
+          prefill: { email: me.email },
+          theme: { color: "#f5f5f2" },
+          handler: async (response: Any) => {
+            try {
+              await api("/billing/checkout/verify", "POST", { razorpayPaymentId: response.razorpay_payment_id, razorpayOrderId: response.razorpay_order_id, razorpaySignature: response.razorpay_signature });
+              setPaymentVerified(true); setStep(5);
+            } catch { setError("We couldn't verify this payment yet. If money was deducted, contact support and we'll check it."); }
+            finally { finish(); }
+          },
+          modal: { ondismiss: () => { setError("Payment wasn't completed. You can continue when you're ready."); finish(); } },
+        });
+        checkout.on("payment.failed", () => { setError("We couldn't complete the payment. No Prime access has been activated."); finish(); });
+        checkout.open();
+      });
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : "Payments are temporarily unavailable. Please try again.");
+    } finally { setBusy(false); }
+  }
+  if (salesSubmitted) return <SalesPending name={name} category={category} email={me.email} phone={phone} city={address} onEdit={() => { setSalesSubmitted(false); setStep(0); }} onSignOut={async () => { await api("/auth/logout", "POST"); window.location.replace("/login"); }} />;
   if (step >= 6 && draft) return <section className="card onboarding-success narrow"><Badge tone="green">LIVE</Badge><h1>Your business is live 🎉</h1><p>Print or share this QR anywhere. Your menu, payment details and business information can change later without replacing it.</p><img className="qr-image" src={`/api/locations/${draft.id}/qr?format=svg&kind=page`} alt={`${name} permanent QR`} /><p className="public-link">{location.origin}/q/{draft.publicId}</p><div className="button-row"><a className="button primary" href={`/api/locations/${draft.id}/qr?format=png&kind=page`} download>Download QR</a><a className="button secondary" href={`/q/${draft.publicId}`} target="_blank" rel="noreferrer">View Customer Page</a><button className="secondary" onClick={done}>Go to Dashboard</button></div></section>;
   return <section className="card narrow onboarding-card">
     <div className="onboarding-progress"><Badge>STEP {Math.min(step + 1, 6)} OF 6</Badge><span>{name || "New business"}</span></div>
     <h1>{step === 0 ? "Let's set up your business" : step === 1 ? "Tell customers about you" : step === 2 ? "Configure your experience" : step === 3 ? "Add your menu" : step === 4 ? "Choose your plan" : "Preview your 1QR page"}</h1>
     <p>{step === 0 ? "Create your business profile and your permanent 1QR." : step === 3 ? "Add a few items now, or skip and finish your menu later." : step === 4 ? "Every new workspace starts with a clear plan decision. Billing activation remains separate." : "Your progress is saved automatically."}</p><ErrorBox error={error} />
-    {step === 0 && <><Field title="Business name" value={name} onChange={(e: any) => setName(e.target.value)} required /><Field title="Permanent page URL" value={slug} onChange={(e: any) => setSlug(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, "-"))} required pattern="[a-z0-9]+(-[a-z0-9]+)*" /><label className="field"><span>Business category</span><select value={category} onChange={(e) => setCategory(e.target.value)}>{[["restaurant", "Restaurant"], ["cafe", "Cafe"], ["cloud_kitchen", "Cloud Kitchen"], ["retail", "Retail Store"], ["salon", "Salon"], ["clinic", "Clinic"], ["hotel", "Hotel"], ["professional_services", "Professional Services"], ["generic", "Other"]].map(([v, t]) => <option key={v} value={v}>{t}</option>)}</select></label></>}
+    {step === 0 && <><Field title="Business name" value={name} onChange={(e: any) => { const value = e.target.value; setName(value); if (!slugTouched) setSlug(normalizeSlugSuggestion(value)); }} required /><Field title="Permanent page URL" value={slug} onChange={(e: any) => { setSlugTouched(true); setSlug(e.target.value); setError(""); }} onBlur={() => { const normalized = normalizeSlugSuggestion(slug); setSlug(normalized); setSlugBlurred(true); setSlugSubmitted(true); }} error={slugSubmitted || slugBlurred ? (slugAvailability === "unavailable" && slugAvailabilityValue === normalizeSlugSuggestion(slug) ? "That URL is already taken. Try another one." : slugError) : ""} success={slugAvailability === "available" && slugAvailabilityValue === normalizeSlugSuggestion(slug) ? "Available" : ""} description={slugAvailability === "checking" ? "Checking availability…" : "Use a name customers will recognize."} autoCapitalize="none" autoCorrect="off" /><small className="slug-preview">{location.origin}/b/{normalizeSlugSuggestion(slug) || "your-business"}</small><label className="field"><span>Business category</span><select value={category} onChange={(e) => setCategory(e.target.value)}>{[["restaurant", "Restaurant"], ["cafe", "Cafe"], ["cloud_kitchen", "Cloud Kitchen"], ["retail", "Retail Store"], ["salon", "Salon"], ["clinic", "Clinic"], ["hotel", "Hotel"], ["professional_services", "Professional Services"], ["generic", "Other"]].map(([v, t]) => <option key={v} value={v}>{t}</option>)}</select></label></>}
     {step === 1 && <><Field title="Description" value={description} onChange={(e: any) => setDescription(e.target.value)} /><Field title="Phone number" value={phone} onChange={(e: any) => setPhone(e.target.value)} inputMode="tel" /><Field title="Address" value={address} onChange={(e: any) => setAddress(e.target.value)} /><Field title="Opening hours" value={hours} onChange={(e: any) => setHours(e.target.value)} /></>}
     {step === 2 && restaurant && <><label className="check"><input type="checkbox" checked readOnly /> Accept restaurant orders</label><label className="check"><input type="checkbox" checked readOnly /> Dine-in</label><label className="check"><input type="checkbox" checked readOnly /> Takeaway</label><Field title="Tax (%)" type="number" min="0" max="30" step="0.01" value={tax} onChange={(e: any) => setTax(e.target.value)} /><Field title="Packaging fee (₹)" type="number" min="0" step="1" value={packaging} onChange={(e: any) => setPackaging(e.target.value)} /></>}
     {step === 2 && !restaurant && <div className="empty"><h3>Your category is ready</h3><p>Configure links, payments and services later from your dashboard.</p></div>}
     {step === 3 && restaurant && <><div className="onboarding-menu-list">{draft?.items?.map((i: Any) => <div className="list-row" key={i.id}><span>{i.name}</span><strong>{money(i.price_paise)}</strong></div>)}</div><div className="two-fields"><Field title="Item name" value={itemName} onChange={(e: any) => setItemName(e.target.value)} /><Field title="Price (₹)" type="number" value={itemPrice} onChange={(e: any) => setItemPrice(e.target.value)} /></div><button className="secondary" type="button" onClick={addItem} disabled={busy || !itemName || !itemPrice}>Add item</button><small>Customers cannot order until an available item exists. You can skip this step for a browse-only page.</small></>}
     {step === 3 && !restaurant && <p>Skip to publish your business page.</p>}
-    {step === 4 && <div className="plan-grid">{(plans.length ? plans : [{ id: "prime", name: "Prime", price_paise: 59900, entitlements: { locations: 10, staff: 20, orders: true, analytics: true, modules: true }, recommended: true }]).map((plan: Any) => <button type="button" key={plan.id} className={`plan-card ${planId === plan.id ? "selected" : ""}`} onClick={() => setPlanId(plan.id)}><span className="plan-card-top"><Badge tone={plan.recommended ? "green" : ""}>{plan.recommended ? "RECOMMENDED" : "PLAN"}</Badge>{planId === plan.id && <Check size={18} />}</span><strong>{plan.name}</strong><span className="plan-price">{plan.price_paise ? money(plan.price_paise) : "Custom"}<small>/ month</small></span><small>{plan.entitlements?.locations} locations · {plan.entitlements?.staff} staff · analytics included</small></button>)}</div>}
+    {step === 4 && (primeEligible ? <div className="plan-grid">{(plans.length ? plans : [{ id: "prime", name: "Prime", price_paise: 59900, original_price_paise: 159900, max_staff: 5, entitlements: { locations: 10, staff: 5, orders: true, analytics: true, modules: true }, recommended: true }]).filter((plan: Any) => plan.id === "prime").map((plan: Any) => <button type="button" key={plan.id} className={`plan-card ${planId === plan.id ? "selected" : ""}`} onClick={() => setPlanId(plan.id)}><span className="plan-card-top"><Badge tone="green">RECOMMENDED</Badge>{planId === plan.id && <Check size={18} />}</span><strong>{plan.name}</strong><span className="plan-price"><del>{money(plan.original_price_paise || 159900)}</del> {money(plan.price_paise)}<small>/ month · Launch price</small></span><small>Dynamic QR · menu · orders · tables · analytics · up to {plan.max_staff || plan.entitlements?.staff || 5} staff</small></button>)}</div> : <div className="plan-grid"><div className="plan-card selected"><Badge>BUILT AROUND YOUR BUSINESS</Badge><strong>Custom</strong><span className="plan-price">Let’s talk</span><small>Custom onboarding, tailored customer experience, and dedicated setup support.</small></div></div>)}
     {step === 5 && <><div className="preview-panel"><Badge>{label(category)}</Badge><h2>{name}</h2><p>{description || "Your description will appear here."}</p><p>{address || "Add your address later from Business page."}</p></div><a className="button secondary" href={draft?.publicId ? `/q/${draft.publicId}` : "#"} target="_blank" rel="noreferrer">Preview as Customer <ArrowUpRight size={16} /></a></>}
-    <div className="button-row onboarding-actions">{step > 0 && <button className="secondary" onClick={() => setStep(step - 1)} disabled={busy}>Back</button>}{step < 5 && <button className="primary" onClick={() => save(step + 1)} disabled={busy || (step === 0 && (!name || !slug))}>{busy ? "Saving…" : "Next"} <ArrowUpRight size={16} /></button>}{step === 5 && <button className="primary" onClick={publish} disabled={busy || !planId}>{busy ? "Publishing…" : "Publish Business"}</button>}</div>
+    <div className="button-row onboarding-actions">{step > 0 && <button className="secondary" onClick={() => setStep(step - 1)} disabled={busy}>Back</button>}{step < 5 && <button className="primary" onClick={() => step === 4 ? (primeEligible ? (paymentVerified ? setStep(5) : startPrimeCheckout()) : publish()) : save(step + 1)} disabled={busy || (step === 0 && (!name || !slug))}>{busy ? (step === 4 && primeEligible ? "Preparing secure checkout…" : "Saving…") : step === 4 && !primeEligible ? "Request a callback" : step === 4 ? (paymentVerified ? "Continue setup" : "Continue with Prime") : "Next"} <ArrowUpRight size={16} /></button>}{step === 5 && <button className="primary" onClick={publish} disabled={busy || !planId || !paymentVerified}>{busy ? "Publishing…" : "Publish Business"}</button>}</div>
   </section>;
 }
 function Profile({ l, done }: any) {
@@ -1075,10 +1272,14 @@ function Catalogue({ l, done }: any) {
 }
 function Tables({ l }: any) {
   const { data, error, load } = usePoll(`/locations/${l.id}/tables`, 10000);
+  const [team, setTeam] = useState<Any[]>([]), [assignees, setAssignees] = useState<Record<string, string>>({});
   const [name, setName] = useState("");
   const [selected, setSelected] = useState<Any | null>(null);
   const [history, setHistory] = useState<Any | null>(null);
   const [failure, setFailure] = useState("");
+  useEffect(() => { api(`/tenants/${l.tenant_id}/staff`).then((rows) => setTeam((rows as Any[]).filter((member) => member.role !== "owner"))).catch(() => {}); }, [l.tenant_id]);
+  useEffect(() => { if (!data?.tables?.length) return; Promise.all(data.tables.map(async (table: Any) => { try { const result = await api(`/locations/${l.id}/tables/${table.id}/assignees`); return [table.id, result.staff?.[0]?.id || ""] as const; } catch { return [table.id, ""] as const; } })).then((rows) => setAssignees(Object.fromEntries(rows))); }, [data?.tables, l.id]);
+  async function assign(tableId: string, userId: string) { try { await api(`/locations/${l.id}/tables/${tableId}/assignees`, "PUT", { userIds: userId ? [userId] : [] }); setAssignees((current) => ({ ...current, [tableId]: userId })); } catch (e) { setFailure((e as Error).message); } }
   async function save(e: any) {
     e.preventDefault();
     try {
@@ -1105,6 +1306,7 @@ function Tables({ l }: any) {
       {!data?.tables?.length && <Empty title="Create your first table">Every table gets its own permanent QR context.</Empty>}
       {data?.tables?.map((t: Any) => <div className="list-row table-row" key={t.id}>
         <div className="grow"><strong>{t.name}</strong><small>{t.enabled ? "Active table QR" : "Disabled · QR unavailable"}</small></div>
+        {l.role !== "staff" && <label className="table-assignee"><span>Orders to</span><select aria-label={`Assign orders for ${t.name}`} value={assignees[t.id] || ""} onChange={(e) => assign(t.id, e.target.value)}><option value="">Owner fallback</option>{team.map((member) => <option key={member.id} value={member.id}>{member.email}</option>)}</select></label>}
         <Badge tone={t.enabled ? "green" : ""}>{t.enabled ? "ACTIVE" : "OFF"}</Badge>
         <button className="text-button" onClick={() => showHistory(t)}>History</button>
         <button className="text-button" onClick={() => {
@@ -1169,7 +1371,7 @@ function CustomerDesigner({ l, done }: any) {
   const previewStyle: any = { "--business-bg": a.backgroundColor, "--business-text": a.textColor, "--business-primary": a.primaryColor, "--business-secondary": a.secondaryColor, "--business-button": a.buttonColor, "--business-button-text": a.buttonTextColor };
   return <div className="two-columns">
     <form className="card" onSubmit={save}>
-      <div className="card-heading"><div><Badge>LIVE DESIGN SYSTEM</Badge><h2>Customize Customer Page</h2></div><a className="text-button" href={`/q/${l.publicId}`} target="_blank" rel="noreferrer">Preview as Customer <ExternalLink size={14} /></a></div>
+      <div className="card-heading"><div><span className="eyebrow">CUSTOMER EXPERIENCE</span><h2>Customer page</h2></div><a className="text-button" href={`/q/${l.publicId}`} target="_blank" rel="noreferrer">Preview as customer <ExternalLink size={14} /></a></div>
       <ErrorBox error={error} />{saved && <p role="status">Customer page updated without changing the QR.</p>}
       <label className="field"><span>Theme preset</span><select value={a.themePreset} onChange={(e) => preset(e.target.value)}>{["minimal","midnight","warm","elegant","bold","custom"].map((x) => <option key={x}>{x}</option>)}</select></label>
       <label className="field"><span>Layout</span><select value={a.layoutPreset} onChange={(e) => setA((x: Any) => ({ ...x, layoutPreset: e.target.value }))}><option value="restaurant">Restaurant focus</option><option value="hero">Hero</option><option value="compact">Compact</option></select></label>
@@ -1387,8 +1589,7 @@ function Orders({ l }: any) {
       {data && !data.orders.length && (
         <section className="card">
           <Empty title="Ready for the next order">
-            This desk refreshes every four seconds. Orders remain saved if you
-            disconnect.
+            New orders will appear here as customers place them.
           </Empty>
         </section>
       )}
@@ -1643,9 +1844,8 @@ function QrStudio({ l }: any) {
   return (
     <div className="two-columns">
       <section className="card qr-card">
-        <EnvironmentBadge />
-        {localOrigin && <div className="preview-warning"><strong>Local testing only</strong><span>This QR points to localhost and will not work on another phone.</span></div>}
-        {temporaryPreviewOrigin && <div className="preview-warning"><strong>Temporary test QR</strong><span>Do not print this QR for permanent use. The preview hostname may change when the tunnel restarts.</span></div>}
+        {localOrigin && <small className="qr-local-note">Local preview — this QR only works on this computer.</small>}
+        {temporaryPreviewOrigin && <small className="qr-local-note">Preview link — use the production QR before printing.</small>}
         {!localOrigin && !temporaryPreviewOrigin && <Badge>READY FOR YOUR COUNTER</Badge>}
         <h2>{l.name}</h2>
         <p>
@@ -1766,11 +1966,14 @@ function Analytics({ l }: any) {
 }
 function Staff({ l }: any) {
   const { data, error, load } = usePoll(`/tenants/${l.tenant_id}/staff`, 30000),
-    [failure, setFailure] = useState("");
+    [failure, setFailure] = useState(""), [invitations, setInvitations] = useState<Any[]>([]);
+  const loadInvitations = useCallback(() => api(`/tenants/${l.tenant_id}/staff/invitations`).then((value) => setInvitations(value as Any[])).catch((e) => setFailure((e as Error).message)), [l.tenant_id]);
+  useEffect(() => { loadInvitations(); }, [loadInvitations]);
   return (
     <div className="two-columns">
       <section className="card">
-        <h2>Your team</h2>
+        <h2>Active members</h2>
+        <p className="muted">Manage who can access this business.</p>
         <ErrorBox error={failure || error} />
         {data?.map((u: Any) => (
           <div className="list-row" key={u.id}>
@@ -1799,13 +2002,18 @@ function Staff({ l }: any) {
           </div>
         ))}
       </section>
+      <section className="card">
+        <h2>Pending invitations</h2>
+        {!invitations.length && <Empty title="No pending invitations">Invite a trusted teammate to help operate this business.</Empty>}
+        {invitations.filter((x) => !x.accepted_at && !x.revoked_at).map((invite) => <div className="list-row" key={invite.id}><div className="grow"><strong>{invite.name}</strong><small>{invite.email} · {label(invite.role)} · expires {new Date(invite.expires_at).toLocaleDateString()}</small></div><button className="text-button danger" onClick={async () => { try { await api(`/tenants/${l.tenant_id}/staff/invitations/${invite.id}/revoke`, "POST"); loadInvitations(); } catch (e) { setFailure((e as Error).message); } }}>Revoke</button></div>)}
+      </section>
       <form
         className="card"
         onSubmit={async (e) => {
           e.preventDefault();
           try {
             await api(
-              `/tenants/${l.tenant_id}/staff`,
+              `/tenants/${l.tenant_id}/staff/invitations`,
               "POST",
               Object.fromEntries(new FormData(e.currentTarget)),
             );
@@ -1815,9 +2023,10 @@ function Staff({ l }: any) {
           }
         }}
       >
-        <h2>Add a team member</h2>
-        <p>The team member must first register their own account.</p>
-        <Field title="Registered email" type="email" name="email" required />
+        <h2>Invite staff</h2>
+        <p>Send a one-time invitation link. It expires after 72 hours.</p>
+        <Field title="Name" name="name" required />
+        <Field title="Email" type="email" name="email" required />
         <label className="field">
           <span>Permission</span>
           <select name="role">
@@ -1831,7 +2040,7 @@ function Staff({ l }: any) {
           Only owners control billing, team access and destination
           configuration.
         </small>
-        <button className="primary">Add member</button>
+        <button className="primary">Send invitation</button>
       </form>
     </div>
   );
@@ -1844,17 +2053,8 @@ function SettingsPage({ tenant, go, refresh }: any) {
         <Badge>{label(tenant.billing_state)}</Badge>
         <h2>{tenant.plan_name}</h2>
         {tenant.plan_price_paise ? <p className="plan-summary-price">{money(tenant.plan_price_paise)} <small>/ month</small></p> : null}
-        <p>
-          {tenant.entitlements.locations} location(s) ·{" "}
-          {tenant.entitlements.staff} staff seats
-        </p>
-        <p>
-          Plan entitlements are managed by the server. Subscription purchasing
-          is not enabled in this release.
-        </p>
-        <button className="primary" onClick={() => go("new")}>
-          Add a location
-        </button>
+        <p>{tenant.entitlements.staff} staff seats included</p>
+        <button className="primary" onClick={() => go("new")}>Add a location</button>
         <button
           className="secondary"
           onClick={async () => {
@@ -1926,7 +2126,11 @@ function Admin() {
   const [accounts, setAccounts] = useState<Any[]>([]),
     [selected, setSelected] = useState<Any | null>(null),
     [error, setError] = useState(""),
-    [plans, setPlans] = useState<Any[]>([]);
+    [plans, setPlans] = useState<Any[]>([]),
+    [leads, setLeads] = useState<Any[]>([]),
+    [billingPayments, setBillingPayments] = useState<Any[]>([]),
+    [billingStatus, setBillingStatus] = useState(""),
+    [billingQuery, setBillingQuery] = useState("");
   async function detail(id: string) {
     try {
       setSelected(await api(`/admin/tenants/${id}`));
@@ -1935,20 +2139,43 @@ function Admin() {
     }
   }
   useEffect(() => {
+    api("/admin/accounts?q=")
+      .then((value) => setAccounts(value as Any[]))
+      .catch((e) => setError(e.message));
     api("/admin/plans")
       .then((value) => setPlans(value as Any[]))
       .catch((e) => setError(e.message));
+    api("/admin/sales-leads")
+      .then((value) => setLeads(value as Any[]))
+      .catch((e) => setError(e.message));
+    api("/admin/billing-payments")
+      .then((value) => setBillingPayments(value as Any[]))
+      .catch((e) => setError(e.message));
   }, []);
+  async function refreshBilling() {
+    try {
+      const query = new URLSearchParams();
+      if (billingStatus) query.set("status", billingStatus);
+      if (billingQuery.trim()) query.set("q", billingQuery.trim());
+      setBillingPayments(await api(`/admin/billing-payments${query.toString() ? `?${query}` : ""}`) as Any[]);
+    } catch (e) { setError((e as Error).message); }
+  }
   return (
     <>
       <div className="page-title">
         <div>
-          <Badge>RESTRICTED · AUDITED</Badge>
-          <h1>Support console</h1>
-          <p>Account access and administrative changes are recorded.</p>
+          <span className="eyebrow">OPERATIONS · AUDITED</span>
+          <h1>Admin overview</h1>
+          <p>Keep the platform healthy, accounts clear and merchant support moving.</p>
         </div>
       </div>
       <ErrorBox error={error} />
+      <div className="admin-metrics">
+        <div><small>Accounts</small><strong>{accounts.length}</strong><span>Loaded results</span></div>
+        <div><small>Sales leads</small><strong>{leads.filter((lead) => lead.status === "NEW").length}</strong><span>Need attention</span></div>
+        <div><small>Pending payments</small><strong>{billingPayments.filter((payment) => payment.status === "CREATED").length}</strong><span>Awaiting verification</span></div>
+        <div><small>Active plans</small><strong>{plans.filter((plan) => plan.active).length}</strong><span>Catalog entries</span></div>
+      </div>
       <form
         className="search-form card"
         onSubmit={async (e) => {
@@ -1969,8 +2196,22 @@ function Admin() {
           Find account
         </button>
       </form>
+      <section className="card admin-operations-section">
+        <div className="section-heading"><div><Badge>OPERATIONS</Badge><h2>Sales leads</h2><p>Unsupported businesses waiting for a tailored conversation.</p></div></div>
+        {leads.length ? leads.map((lead) => <div className="list-row" key={lead.id}><div className="grow"><strong>{lead.business_name}</strong><small>{label(lead.category)} · {lead.email} · {lead.city}</small></div><Badge tone={lead.status === "NEW" ? "amber" : "green"}>{lead.status}</Badge><select aria-label={`Update ${lead.business_name} status`} value={lead.status} onChange={async (e) => { await api(`/admin/sales-leads/${lead.id}`, "PATCH", { status: e.target.value }); setLeads((current) => current.map((x) => x.id === lead.id ? { ...x, status: e.target.value } : x)); }}><option>NEW</option><option>CONTACTED</option><option>QUALIFIED</option><option>CONVERTED</option><option>CLOSED</option></select></div>) : <Empty title="No sales leads yet">Custom-category requests will appear here.</Empty>}
+      </section>
+      <section className="card admin-operations-section">
+        <div className="section-heading"><div><Badge>REVENUE OPERATIONS</Badge><h2>Billing</h2><p>Server-verified Prime payments. Provider secrets and raw payloads are never displayed.</p></div></div>
+        <form className="admin-filter-row" onSubmit={(e) => { e.preventDefault(); void refreshBilling(); }}>
+          <Field title="Search merchant, business or order" value={billingQuery} onChange={(e: any) => setBillingQuery(e.target.value)} />
+          <label className="field"><span>Status</span><select value={billingStatus} onChange={(e) => setBillingStatus(e.target.value)}><option value="">All statuses</option><option>CREATED</option><option>VERIFIED</option><option>FAILED</option><option>CANCELLED</option></select></label>
+          <button className="secondary" type="submit">Filter payments</button>
+        </form>
+        {billingPayments.length ? <div className="admin-billing-table"><div className="admin-billing-head"><span>Merchant / business</span><span>Plan</span><span>Amount</span><span>Status</span><span>Created</span></div>{billingPayments.map((payment) => <div className="admin-billing-row" key={payment.id}><div><strong>{payment.email}</strong><small>{payment.business_name || payment.tenant_name} · {label(payment.category || "")}</small></div><span>{payment.plan_name || "Prime"}</span><span>{money(payment.amount_paise)} {payment.currency}</span><Badge tone={payment.status === "VERIFIED" ? "green" : payment.status === "FAILED" ? "red" : "amber"}>{payment.status}</Badge><small>{new Date(payment.created_at).toLocaleString()}</small></div>)}</div> : <Empty title="No billing records yet">Verified Prime payments will appear here.</Empty>}
+      </section>
       <div className="two-columns">
-        <section className="card">
+        <section className="card admin-account-results">
+          <div className="section-heading"><div><span className="eyebrow">DIRECTORY</span><h2>Accounts</h2><p>Search a merchant to open a privacy-safe account detail.</p></div></div>
           {accounts.map((a) => (
             <button className="step" key={a.id} onClick={() => detail(a.id)}>
               <span>
@@ -1982,18 +2223,34 @@ function Admin() {
               <ChevronRight />
             </button>
           ))}
+          {!accounts.length && <Empty title="Search for an account">Account results will appear here.</Empty>}
         </section>
         {selected && (
           <section className="card">
-            <h2>{selected.tenant.name}</h2>
+            <div className="card-heading">
+              <div><h2>{selected.tenant.name}</h2><p>Account detail and operational history</p></div>
+              <button className="text-button" onClick={() => setSelected(null)}>Close</button>
+            </div>
             <p>
-              {selected.tenant.plan_name} · {selected.tenant.billing_state}
+              {selected.tenant.plan_name} · {selected.tenant.plan_price_paise ? money(selected.tenant.plan_price_paise) + " / month" : "Custom"} · {selected.tenant.billing_state}
             </p>
+            <div className="admin-billing-summary"><strong>Billing</strong><small>Reference {selected.tenant.plan_original_price_paise ? money(selected.tenant.plan_original_price_paise) + " / month" : "—"} · {selected.tenant.plan_currency || "INR"}</small><small>Staff seats {selected.staff?.filter((member: Any) => member.role !== "owner").length || 0} / {selected.tenant.plan_max_staff || 0}</small>{(selected.billingPayments || []).map((payment: Any) => <small key={payment.id}>{payment.provider} · {payment.status} · {money(payment.amount_paise)} · {payment.verified_at ? `verified ${new Date(payment.verified_at).toLocaleDateString()}` : "not verified"}</small>)}</div>
+            <div className="admin-detail-grid">
+              <div><small>LOCATIONS</small><strong>{selected.locations?.length || 0}</strong></div>
+              <div><small>STAFF</small><strong>{selected.staff?.length || 0}</strong></div>
+              <div><small>LOGIN EVENTS</small><strong>{selected.loginHistory?.length || 0}</strong></div>
+            </div>
+            <h3>Businesses & locations</h3>
+            {(selected.locations || []).map((location: Any) => <div className="list-row" key={location.id}><div className="grow"><strong>{location.name}</strong><small>{label(location.category)} · {location.public_id || location.publicId || "No public ID"}</small></div><Badge tone={location.published ? "green" : ""}>{location.published ? "LIVE" : "DRAFT"}</Badge></div>)}
+            <h3>Team</h3>
+            {(selected.staff || []).map((member: Any) => <div className="list-row" key={member.id}><div className="grow"><strong>{member.email}</strong><small>{label(member.role)} · {member.last_active_at ? `last active ${new Date(member.last_active_at).toLocaleDateString()}` : "No activity recorded"}</small></div></div>)}
+            <h3>Login history</h3>
+            {(selected.loginHistory || []).slice(0, 8).map((event: Any) => <div className="list-row" key={event.id}><div className="grow"><strong>{event.success ? "Successful login" : "Failed login"}</strong><small>{new Date(event.created_at).toLocaleString()} · {event.client_type} · {event.platform || "unknown"}</small></div></div>)}
             <h3>Routes</h3>
             {selected.routes.map((r: Any) => (
               <div className="route-card" key={r.id}>
                 <strong>
-                  {r.label} · {r.vpa}
+                  {r.label} · {String(r.vpa || "").replace(/^(.{2}).*(@.*)$/, "$1••••$2")}
                 </strong>
                 <p>{label(r.state)}</p>
                 <small>Submitted evidence: {r.evidence}</small>
@@ -2155,6 +2412,7 @@ function Customer({ slug, initialView = "hub" }: { slug: string; initialView?: "
     [deliveryAddress, setDeliveryAddress] = useState(""),
     [landmark, setLandmark] = useState(""),
     [search, setSearch] = useState(""),
+    [menuSection, setMenuSection] = useState("all"),
     [foodFilter, setFoodFilter] = useState("all"),
     [customizations, setCustomizations] = useState<Record<string, Any>>({}),
     [configItem, setConfigItem] = useState<Any | null>(null),
@@ -2330,6 +2588,7 @@ function Customer({ slug, initialView = "hub" }: { slug: string; initialView?: "
   }
   const menuBusiness = !!b?.capabilities?.menu;
   const appearance = { ...appearanceDefaults, ...(b?.profile?.appearance || {}) };
+  const menuSections = b ? [...new Set<string>(b.items.map((i: Any) => i.section).filter(Boolean))] : [];
   const hiddenActions = appearance.hiddenActions || [];
   const phone = b?.profile.phone?.trim();
   const whatsapp = b?.profile.whatsappNumber?.trim() || phone;
@@ -2350,31 +2609,28 @@ function Customer({ slug, initialView = "hub" }: { slug: string; initialView?: "
   return (
     <div className="customer-wrap customer-branded" style={{ "--business-bg": appearance.backgroundColor, "--business-text": appearance.textColor, "--business-primary": appearance.primaryColor, "--business-secondary": appearance.secondaryColor, "--business-button": appearance.buttonColor, "--business-button-text": appearance.buttonTextColor } as any}>
       <header className="customer-top">
-        <Brand />
-        <Badge>LOCAL & CONNECTED</Badge>
+        <a href={`/q/${encodeURIComponent(slug)}`} className="customer-brand-link" aria-label={`Back to ${b.name}`}><Brand /></a>
+        <div className="customer-top-actions">
+          {view === "menu" && <button className="customer-top-button" aria-label="Search menu" onClick={() => document.querySelector<HTMLInputElement>(".customer-menu-search")?.focus()}><Search size={18} /></button>}
+          {lines.length > 0 && <button className="customer-top-button customer-top-cart" aria-label={`${lines.length} items in cart`} onClick={() => document.querySelector<HTMLElement>(".customer-cart-panel")?.scrollIntoView({ behavior: "smooth", block: "center" })}><ShoppingBag size={18} /><span>{lines.reduce((sum: number, i: Any) => sum + cart[i.id], 0)}</span></button>}
+        </div>
       </header>
       <div className="customer-hero">
-        {appearance.coverUrl && <img className="business-cover" src={appearance.coverUrl} alt="" />}
-        {appearance.logoUrl ? <img className="business-logo" src={appearance.logoUrl} alt={`${b.name} logo`} /> : <div className="business-avatar">{b.name[0]}</div>}
-        <Badge>{label(b.category)}</Badge>
-        <h1>{b.name}</h1>
-        <p>{b.profile.description}</p>
-        {b.profile.address && (
-          <p className="detail">
-            <MapPin size={16} />
-            {b.profile.address}
-          </p>
-        )}
-        {b.profile.hours && (
-          <p className="detail">
-            <Clock size={16} />
-            {b.profile.hours}
-          </p>
-        )}
-        <p className={`open-state ${b.profile.manualClosed ? "closed" : "open"}`}>
-          <span aria-hidden="true" /> {b.profile.manualClosed ? "Currently Closed" : "Open now"}
-        </p>
-        {b.table && <p className="table-context">Ordering for <strong>{b.table.name}</strong></p>}
+        {appearance.coverUrl && <div className="customer-cover"><img className="business-cover" src={appearance.coverUrl} alt="" /></div>}
+        <div className="customer-hero-content">
+          {appearance.logoUrl ? <img className="business-logo" src={appearance.logoUrl} alt={`${b.name} logo`} /> : <div className="business-avatar">{b.name[0]}</div>}
+          <div className="customer-identity">
+            <Badge>{label(b.category)}</Badge>
+            <h1>{b.name}</h1>
+            {b.profile.description && <p>{b.profile.description}</p>}
+            <div className="customer-meta">
+              {b.profile.manualClosed ? <span className="customer-status closed"><i /> Currently closed</span> : <span className="customer-status"><i /> Open now</span>}
+              {b.profile.address && <span><MapPin size={14} />{b.profile.address}</span>}
+              {b.profile.hours && <span><Clock size={14} />{b.profile.hours}</span>}
+            </div>
+          </div>
+          {b.table && <p className="table-context">Ordering for <strong>{b.table.name}</strong></p>}
+        </div>
       </div>
       <ErrorBox error={error} />
       {view === "hub" && (
@@ -2414,8 +2670,12 @@ function Customer({ slug, initialView = "hub" }: { slug: string; initialView?: "
       )}
       {view === "menu" && menuBusiness && !b.profile.manualClosed && (
         <div className="customer-menu-tools">
-          <input aria-label="Search menu" placeholder="Search the menu" value={search} onChange={(e) => setSearch(e.target.value)} />
-          <div className="filter-row" role="group" aria-label="Food filters">
+          <div className="customer-menu-search-wrap"><Search size={18} /><input className="customer-menu-search" aria-label="Search menu" placeholder="Search the menu" value={search} onChange={(e) => setSearch(e.target.value)} /></div>
+          <div className="customer-category-row" role="tablist" aria-label="Menu categories">
+            <button role="tab" aria-selected={menuSection === "all"} className={menuSection === "all" ? "selected" : ""} onClick={() => setMenuSection("all")}>All</button>
+            {menuSections.map((section) => <button role="tab" aria-selected={menuSection === section} className={menuSection === section ? "selected" : ""} key={section} onClick={() => setMenuSection(section)}>{section}</button>)}
+          </div>
+          <div className="filter-row customer-food-filter" role="group" aria-label="Food filters">
             {[["all", "All"], ["VEG", "Veg"], ["NON_VEG", "Non-veg"], ["VEGAN", "Vegan"]].map(([value, text]) => <button key={value} className={foodFilter === value ? "selected" : "secondary"} onClick={() => setFoodFilter(value)}>{text}</button>)}
           </div>
         </div>
@@ -2495,7 +2755,7 @@ function Customer({ slug, initialView = "hub" }: { slug: string; initialView?: "
         </section>
       ) : (
         <>
-          {view === "menu" && b.items.length > 0 && (
+      {view === "menu" && b.items.length > 0 && (
             <section className="customer-menu">
               <div className="section-title">
                 <h2>
@@ -2507,7 +2767,7 @@ function Customer({ slug, initialView = "hub" }: { slug: string; initialView?: "
                 </h2>
                 <span>{b.items.length} offerings</span>
               </div>
-              {[...new Set<string>(b.items.map((i: Any) => i.section))].map(
+              {[...new Set<string>(b.items.map((i: Any) => i.section))].filter((section) => menuSection === "all" || section === menuSection).map(
                 (section) => (
                   <section key={section}>
                     <h3 className="menu-section">{section}</h3>
@@ -2515,7 +2775,7 @@ function Customer({ slug, initialView = "hub" }: { slug: string; initialView?: "
                       .filter((i: Any) => i.section === section && (!search || `${i.name} ${i.description} ${(i.tags || []).join(" ")}`.toLowerCase().includes(search.toLowerCase())) && (foodFilter === "all" || i.food_type === foodFilter))
                       .map((i: Any) => (
                         <article
-                          className={`menu-item ${!i.available ? "sold-out" : ""}`}
+                          className={`menu-item customer-menu-item ${!i.available ? "sold-out" : ""}`}
                           key={i.id}
                         >
                           {i.image && (
@@ -2555,8 +2815,9 @@ function Customer({ slug, initialView = "hub" }: { slug: string; initialView?: "
               )}
             </section>
           )}
-          {view === "menu" && (lines.length > 0 || pending) && (
-            <section className="card cart">
+      {view === "menu" && lines.length > 0 && !pending && <button className="customer-cart-bar" onClick={() => document.querySelector<HTMLElement>(".customer-cart-panel")?.scrollIntoView({ behavior: "smooth", block: "center" })}><span className="cart-count">{lines.reduce((sum: number, i: Any) => sum + cart[i.id], 0)}</span><span><strong>{lines.length === 1 ? "1 item" : `${lines.length} items`}</strong><small>Ready to review</small></span><b>{money(total)}</b><ArrowUpRight size={18} /></button>}
+      {view === "menu" && (lines.length > 0 || pending) && (
+            <section className="card cart customer-cart-panel">
               <h2>Your order</h2>
               {lines.map((i: Any) => (
                 <div className="list-row" key={i.id}>

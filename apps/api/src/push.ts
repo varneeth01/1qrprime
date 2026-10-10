@@ -7,10 +7,12 @@ export async function processPushOutbox(db: AsyncDatabase, log: { error: Functio
   const jobs = await notifications.pending(10);
   for (const job of jobs) {
     try {
-      const tokens = await db.all<any>(
-        "SELECT DISTINCT p.token FROM push_tokens p JOIN memberships m ON m.user_id=p.user_id JOIN locations l ON l.tenant_id=m.tenant_id WHERE l.id=? AND p.enabled=TRUE",
-        [job.location_id],
-      );
+      const tokens = job.recipient_user_id
+        ? await db.all<any>("SELECT DISTINCT p.token FROM push_tokens p WHERE p.user_id=? AND p.enabled=TRUE", [job.recipient_user_id])
+        : await db.all<any>(
+          "SELECT DISTINCT p.token FROM push_tokens p JOIN memberships m ON m.user_id=p.user_id JOIN locations l ON l.tenant_id=m.tenant_id WHERE l.id=? AND p.enabled=TRUE",
+          [job.location_id],
+        );
       if (!tokens.length) {
         await notifications.markDelivered(db, job.id);
         continue;

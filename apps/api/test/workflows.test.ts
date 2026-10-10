@@ -477,6 +477,42 @@ test("staff permissions and server plan limits", async () => {
     ).status,
     403,
   );
+
+  const table = await call("POST", `/locations/${lid}/tables`, owner, { name: "Assigned service table" });
+  assert.equal(table.status, 200);
+  const staffUser = db.prepare("SELECT id FROM users WHERE email=?").get("staff@example.test") as { id: string };
+  const ownerUser = db.prepare("SELECT id FROM users WHERE email=?").get("owner@example.test") as { id: string };
+  assert.equal((await call("PUT", `/locations/${lid}/tables/${table.body.id}/assignees`, staff, { userIds: [staffUser.id] })).status, 403);
+  assert.equal((await call("PUT", `/locations/${lid}/tables/${table.body.id}/assignees`, other, { userIds: [staffUser.id] })).status, 403);
+  assert.equal(
+    (await call("PUT", `/locations/${lid}/tables/${table.body.id}/assignees`, owner, { userIds: [staffUser.id] })).status,
+    200,
+  );
+  const assignedOrder = await call("POST", `/public/${slug}/orders`, undefined, {
+    idempotencyKey: randomUUID(),
+    lines: [{ itemId: item, quantity: 1 }],
+    orderType: "takeaway",
+    paymentMethod: "counter",
+    tableToken: table.body.publicToken,
+  });
+  assert.equal(assignedOrder.status, 200, JSON.stringify(assignedOrder.body));
+  const assignedNotification = db.prepare("SELECT recipient_user_id FROM outbox ORDER BY rowid DESC LIMIT 1").get() as { recipient_user_id: string };
+  assert.equal(assignedNotification.recipient_user_id, staffUser.id);
+
+  assert.equal(
+    (await call("PUT", `/locations/${lid}/tables/${table.body.id}/assignees`, owner, { userIds: [] })).status,
+    200,
+  );
+  const fallbackOrder = await call("POST", `/public/${slug}/orders`, undefined, {
+    idempotencyKey: randomUUID(),
+    lines: [{ itemId: item, quantity: 1 }],
+    orderType: "takeaway",
+    paymentMethod: "counter",
+    tableToken: table.body.publicToken,
+  });
+  assert.equal(fallbackOrder.status, 200);
+  const fallbackNotification = db.prepare("SELECT recipient_user_id FROM outbox ORDER BY rowid DESC LIMIT 1").get() as { recipient_user_id: string };
+  assert.equal(fallbackNotification.recipient_user_id, ownerUser.id);
 });
 test("state machine and concurrent update protection", async () => {
   assert.equal(

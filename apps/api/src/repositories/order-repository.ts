@@ -187,7 +187,16 @@ export class OrderRepository {
         }
         await tx.run("INSERT INTO order_events(id,order_id,state) VALUES (?,?,?)", [id(), orderId, "submitted"]);
         await tx.run("INSERT INTO events(location_id,day,kind,count) VALUES (?,CURRENT_DATE,?,1) ON CONFLICT(location_id,day,kind) DO UPDATE SET count=events.count+1", [location.id, "order_submitted"]);
-        await tx.run("INSERT INTO outbox(id,location_id,title,body) VALUES (?,?,?,?)", [id(), location.id, "New order", `Order ${publicOrderNumber} is awaiting a decision.`]);
+        const assignedStaff = table
+          ? await tx.get<any>(
+            "SELECT a.user_id FROM table_staff_assignments a JOIN memberships m ON m.user_id=a.user_id AND m.tenant_id=a.tenant_id WHERE a.table_id=? AND a.tenant_id=? AND m.role!='owner' ORDER BY a.created_at ASC LIMIT 1",
+            [table.id, location.tenant_id],
+          )
+          : undefined;
+        const recipient = assignedStaff?.user_id
+          ? assignedStaff.user_id
+          : (await tx.get<any>("SELECT user_id FROM memberships WHERE tenant_id=? AND role='owner' ORDER BY user_id LIMIT 1", [location.tenant_id]))?.user_id;
+        await tx.run("INSERT INTO outbox(id,location_id,recipient_user_id,title,body) VALUES (?,?,?,?,?)", [id(), location.id, recipient || null, "New order", `Order ${publicOrderNumber} is awaiting a decision.`]);
         const order = await this.getById(orderId, location.id, tx);
         return { order, accessToken };
       });

@@ -11,6 +11,10 @@ export const categories = [
   "professional_services",
   "generic",
 ] as const;
+export const primeEligibleCategories = ["restaurant", "cafe", "hotel"] as const;
+export function isPrimeEligibleCategory(category: string): boolean {
+  return (primeEligibleCategories as readonly string[]).includes(category);
+}
 const restaurantCategories = ["restaurant", "cafe", "cloud_kitchen"];
 export const templates = Object.fromEntries(
   categories.map((category) => [

@@ -1,7 +1,21 @@
 import Fastify from "fastify";
+import { existsSync, readFileSync } from "node:fs";
 import { config } from "./config.js";
 import type { Db } from "./db.js";
 
+function loadLocalEnv() {
+  if (process.env.NODE_ENV === "production") return;
+  const path = process.env.DOTENV_PATH || "../../.env";
+  if (!existsSync(path)) return;
+  for (const line of readFileSync(path, "utf8").split(/\r?\n/)) {
+    const match = line.match(/^\s*([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*)\s*$/);
+    if (!match || process.env[match[1]] !== undefined) continue;
+    const value = match[2].replace(/^(["'])(.*)\1$/, "$2");
+    process.env[match[1]] = value;
+  }
+}
+
+loadLocalEnv();
 const c = config();
 const app = Fastify({
   logger: c.NODE_ENV !== "test",
@@ -35,7 +49,9 @@ async function start() {
 
     bootstrapStage = "listen";
     const listening = app.listen({
-      port: Number(process.env.PORT || 3000),
+      // Use the validated configuration so local web proxy and deployed
+      // process configuration cannot silently disagree about the API port.
+      port: c.PORT,
       ...(process.env.VERCEL
         ? {}
         : { host: process.env.HOST || "0.0.0.0" }),
