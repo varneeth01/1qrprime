@@ -523,20 +523,48 @@ export async function createApp(
     if (!plan) fail(400, "That plan is not available");
     if (!Number.isInteger(plan.price_paise) || plan.price_paise < 100)
       fail(400, "Payment amount is invalid", "VALIDATION_ERROR");
-    if (!c.RAZORPAY_KEY_ID || !c.RAZORPAY_KEY_SECRET)
+    if (!c.RAZORPAY_KEY_ID || !c.RAZORPAY_KEY_SECRET) {
+      r.log.error({
+        event: "razorpay_order_create_failed",
+        provider: "razorpay",
+        reason: "missing_runtime_configuration",
+        keyIdPresent: Boolean(c.RAZORPAY_KEY_ID),
+        keySecretPresent: Boolean(c.RAZORPAY_KEY_SECRET),
+        keyIdMode: c.RAZORPAY_KEY_ID?.startsWith("rzp_live_") ? "live" : c.RAZORPAY_KEY_ID?.startsWith("rzp_test_") ? "test" : "unknown",
+      }, "Razorpay runtime configuration is incomplete");
       fail(503, "Payments are temporarily unavailable.", "PAYMENT_UNAVAILABLE");
+    }
     const receipt = `prime_${id().replaceAll("-", "")}`;
-    const response = await fetch("https://api.razorpay.com/v1/orders", {
-      method: "POST",
-      headers: {
-        Authorization: `Basic ${Buffer.from(`${c.RAZORPAY_KEY_ID}:${c.RAZORPAY_KEY_SECRET}`).toString("base64")}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({ amount: plan.price_paise, currency: plan.currency || "INR", receipt, notes: { tenant_id: location.tenant_id, plan_id: plan.id } }),
-    });
-    if (!response.ok) fail(502, "Payments are temporarily unavailable.", "PAYMENT_UNAVAILABLE");
-    const order = await response.json() as { id?: string; amount?: number; currency?: string };
-    if (!order.id || order.amount !== plan.price_paise) fail(502, "Payments are temporarily unavailable.", "PAYMENT_UNAVAILABLE");
+    r.log.info({ event: "razorpay_order_create_started", amount: plan.price_paise, currency: plan.currency || "INR" }, "Razorpay order creation started");
+    let response: Response | undefined;
+    try {
+      response = await fetch("https://api.razorpay.com/v1/orders", {
+        method: "POST",
+        headers: {
+          Authorization: `Basic ${Buffer.from(`${c.RAZORPAY_KEY_ID}:${c.RAZORPAY_KEY_SECRET}`).toString("base64")}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ amount: plan.price_paise, currency: plan.currency || "INR", receipt, notes: { tenant_id: location.tenant_id, plan_id: plan.id } }),
+      });
+    } catch (error) {
+      r.log.error({ event: "razorpay_order_create_failed", provider: "razorpay", error: error instanceof Error ? error.message : "request failed" }, "Razorpay order request failed");
+      fail(502, "Payments are temporarily unavailable.", "PAYMENT_UNAVAILABLE");
+    }
+    if (!response) fail(502, "Payments are temporarily unavailable.", "PAYMENT_UNAVAILABLE");
+    const providerResponse = response as Response;
+    const providerBody = await providerResponse.text();
+    let providerError: any = {};
+    try { providerError = providerBody ? JSON.parse(providerBody) : {}; } catch { providerError = {}; }
+    if (!providerResponse.ok) {
+      r.log.error({ event: "razorpay_order_create_failed", provider: "razorpay", upstreamStatus: providerResponse.status, upstreamCode: providerError?.error?.code, upstreamDescription: providerError?.error?.description }, "Razorpay rejected order creation");
+      fail(502, "Payments are temporarily unavailable.", "PAYMENT_UNAVAILABLE");
+    }
+    const order = providerError as { id?: string; amount?: number; currency?: string };
+    if (!order.id || order.amount !== plan.price_paise) {
+      r.log.error({ event: "razorpay_order_create_failed", provider: "razorpay", upstreamStatus: providerResponse.status, reason: "unexpected order response" }, "Razorpay returned an invalid order response");
+      fail(502, "Payments are temporarily unavailable.", "PAYMENT_UNAVAILABLE");
+    }
+    r.log.info({ event: "razorpay_order_create_succeeded", provider: "razorpay", amount: order.amount, currency: order.currency || "INR" }, "Razorpay order created");
     await asyncDb.run(
       "INSERT INTO billing_payments(id,user_id,tenant_id,plan_id,provider_order_id,amount_paise,currency,status,receipt) VALUES (?,?,?,?,?,?,?,?,?)",
       [id(), u.id, location.tenant_id, plan.id, order.id, order.amount, order.currency || "INR", "CREATED", receipt],

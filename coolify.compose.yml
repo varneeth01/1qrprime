@@ -25,6 +25,11 @@ services:
       SMTP_PASSWORD: ${SMTP_PASSWORD:?Set Resend SMTP password}
       SMTP_FROM_NAME: ${SMTP_FROM_NAME:-1QR Prime}
       SMTP_FROM_EMAIL: ${SMTP_FROM_EMAIL:-noreply@1qrprime.com}
+      # Razorpay credentials belong to the API runtime only. The web image
+      # never receives the secret; the public key is returned by the API after
+      # an authenticated order is created.
+      RAZORPAY_KEY_ID: ${RAZORPAY_KEY_ID:?Set Razorpay key ID}
+      RAZORPAY_KEY_SECRET: ${RAZORPAY_KEY_SECRET:?Set Razorpay key secret}
       PG_POOL_MAX: ${PG_POOL_MAX:-10}
     volumes:
       - prime-media:/data/media
