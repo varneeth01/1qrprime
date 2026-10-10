@@ -445,6 +445,14 @@ test("registration is identity-only and establishes a durable verification bound
     assert.equal(me.statusCode, 200);
     assert.equal(me.json().emailVerified, false);
     assert.deepEqual(me.json().locations, []);
+    const login = await app.inject({
+      method: "POST",
+      url: "/api/auth/login",
+      headers: { "x-client": "web" },
+      payload: { email, password: "long identity only password" },
+    });
+    assert.equal(login.statusCode, 200);
+    assert.equal((db.prepare("SELECT count(*) n FROM login_events WHERE user_id=(SELECT id FROM users WHERE email=?)").get(email) as any).n, 2);
   } finally {
     await app.close();
     db.close();

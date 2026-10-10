@@ -297,8 +297,8 @@ export async function createApp(
     await authRepository.createSession(asyncDb, hash(token), userId, Date.now() + 7 * 86400000);
     const now = new Date().toISOString();
     await asyncDb.run(
-      "INSERT INTO login_events(id,user_id,created_at,success,client_type,platform,ip_address,user_agent,session_reference) VALUES (?,?,?,1,?,?,?,?,?)",
-      [id(), userId, now, String(r.headers["x-client"] || "web"), String(r.headers["x-platform"] || "unknown"), r.ip, String(r.headers["user-agent"] || "unknown").slice(0, 500), hash(token).slice(0, 16)],
+      "INSERT INTO login_events(id,user_id,created_at,success,client_type,platform,ip_address,user_agent,session_reference) VALUES (?,?,?,?,?,?,?,?,?)",
+      [id(), userId, now, true, String(r.headers["x-client"] || "web"), String(r.headers["x-platform"] || "unknown"), r.ip, String(r.headers["user-agent"] || "unknown").slice(0, 500), hash(token).slice(0, 16)],
     );
     await asyncDb.run("UPDATE users SET last_login_at=?,last_active_at=? WHERE id=?", [now, now, userId]);
     reply.setCookie("session", token, {
