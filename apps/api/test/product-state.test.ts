@@ -10,6 +10,7 @@ const base = (overrides: any = {}) => ({
 
 test("product state gates navigation until the account is ready", () => {
   assert.equal(resolveProductState(null), "UNAUTHENTICATED");
+  assert.equal(resolveProductState({ emailVerified: false, locations: [], tenants: [] }), "EMAIL_VERIFICATION_REQUIRED");
   assert.equal(resolveProductState({ locations: [], tenants: [] }), "AUTHENTICATED_ACCOUNT_SETUP");
   assert.equal(resolveProductState(base({ locations: [{ id: "l1", tenant_id: "t1", category: "restaurant", published: false, onboarding: { completed: false }, role: "owner" }] })), "AUTHENTICATED_ACCOUNT_SETUP");
   assert.equal(resolveProductState(base({ tenants: [{ id: "t1", billing_state: "free" }] })), "PRIME_PAYMENT_REQUIRED");

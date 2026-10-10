@@ -115,14 +115,13 @@ function Brand() {
     </a>
   );
 }
-function Auth({ done, initialRegister = false }: { done: () => void; initialRegister?: boolean }) {
+function Auth({ done, initialRegister = false }: { done: () => Promise<boolean> | boolean; initialRegister?: boolean }) {
   const [register, setRegister] = useState(initialRegister),
     [error, setError] = useState(""),
     [rateLimitSeconds, setRateLimitSeconds] = useState(0),
     [busy, setBusy] = useState(false),
     [email, setEmail] = useState(""),
     [password, setPassword] = useState(""),
-    [name, setName] = useState(""),
     [touched, setTouched] = useState<Record<string, boolean>>({}),
     [submitted, setSubmitted] = useState(false);
   useEffect(() => {
@@ -131,8 +130,7 @@ function Auth({ done, initialRegister = false }: { done: () => void; initialRegi
     return () => window.clearInterval(timer);
   }, [rateLimitSeconds]);
   const emailError = emailFormatError(email),
-    passwordError = passwordFormatError(password),
-    nameError = !name.trim() ? "Enter your business or organisation name." : name.trim().length < 2 ? "Use at least 2 characters." : "";
+    passwordError = passwordFormatError(password);
   function markTouched(field: string) {
     setTouched((current) => ({ ...current, [field]: true }));
   }
@@ -188,17 +186,18 @@ function Auth({ done, initialRegister = false }: { done: () => void; initialRegi
           onSubmit={async (e) => {
             e.preventDefault();
             setSubmitted(true);
-            setTouched({ email: true, password: true, ...(register ? { name: true } : {}) });
-            if (emailError || passwordError || (register && nameError)) return;
+            setTouched({ email: true, password: true });
+            if (emailError || passwordError) return;
             setBusy(true);
             setError("");
             try {
               await api(
                 `/auth/${register ? "register" : "login"}`,
                 "POST",
-                { email: email.trim(), password, ...(register ? { name: name.trim() } : {}) },
+                { email: email.trim(), password },
               );
-              done();
+              const bootstrapped = await done();
+              if (!bootstrapped && register) setError("Account created. Sign in to continue.");
             } catch (e) {
               if (e instanceof ApiError && !register && e.status === 401)
                 setError("Email or password is incorrect.");
@@ -219,16 +218,6 @@ function Auth({ done, initialRegister = false }: { done: () => void; initialRegi
             }
           }}
         >
-          {register && (
-            <Field
-              title="Business / organisation name"
-              value={name}
-              onChange={(e: any) => changeField(setName, e.target.value)}
-              onBlur={() => markTouched("name")}
-              error={show("name", nameError)}
-              autoComplete="organization"
-            />
-          )}
           <Field
             title="Email address"
             value={email}
@@ -271,6 +260,12 @@ function RouteRedirect({ to }: { to: string }) {
     window.location.replace(to);
   }, [to]);
   return <div className="boot-screen"><Brand /><Skeleton className="boot-line" /><p>Opening your workspace</p></div>;
+}
+function VerificationRequired({ email, onSignOut }: { email: string; onSignOut: () => Promise<void> }) {
+  const [message, setMessage] = useState("");
+  const [error, setError] = useState("");
+  const [busy, setBusy] = useState(false);
+  return <div className="auth auth-v2"><section className="auth-form auth-card"><Brand /><Badge>EMAIL VERIFICATION</Badge><h2>Verify your email</h2><p>We sent a verification link to:</p><strong className="verification-email">{email}</strong><ErrorBox error={error} />{message && <div className="auth-success" role="status">{message}</div>}<button className="primary wide" disabled={busy} onClick={async () => { setBusy(true); setError(""); setMessage(""); try { await api("/auth/request-verification", "POST"); setMessage("Verification email sent. Check your inbox and spam folder."); } catch (e) { setError((e as Error).message); } finally { setBusy(false); } }}>{busy ? "Sending…" : "Resend verification email"}</button><button className="secondary wide" onClick={() => { window.location.href = "/login"; }}>Sign in instead</button><button className="text-button" onClick={onSignOut}>Sign out</button></section></div>;
 }
 function StaffInvite({ token }: { token: string }) {
   const [invite, setInvite] = useState<Any | null>(null), [password, setPassword] = useState(""), [error, setError] = useState(""), [accepted, setAccepted] = useState(false), [busy, setBusy] = useState(false);
@@ -336,14 +331,16 @@ function App() {
       // A newly registered or legacy account without a business should enter
       // the business setup flow directly, matching the native experience.
       if (!m.locations.length && !m.adminRole) setSection((current) => current === "portfolio" ? "new" : current);
+      return true;
     } catch {
       setMe(null);
+      return false;
     } finally {
       setLoading(false);
     }
   }, []);
   useEffect(() => {
-    refresh();
+    void refresh();
   }, [refresh]);
   const pathname = window.location.pathname;
   if (isMarketingPath(pathname)) return <MarketingRouter path={pathname} />;
@@ -370,13 +367,14 @@ function App() {
     tenant =
       me.tenants.find((t: Any) => t.id === l?.tenant_id) || me.tenants[0];
   const productState = resolveProductState({ ...me, activeLocationId: l?.id });
+  const verificationRequired = productState === "EMAIL_VERIFICATION_REQUIRED";
   const needsOnboarding = productState === "AUTHENTICATED_ACCOUNT_SETUP";
   const paymentRequired = productState === "PRIME_PAYMENT_REQUIRED";
   const salesPending = productState === "SALES_CONTACT_PENDING";
   if (!canRenderMerchantNavigation(productState) && !me.adminRole)
     return (
       <div className="auth auth-v2">
-        {needsOnboarding ? <section className="auth-form auth-card"><Brand /><NewLocation me={me} initial={l} done={refresh} /></section> : paymentRequired ? <section className="auth-form auth-card"><Brand /><NewLocation me={me} initial={l} forcePayment done={refresh} /></section> : salesEditing ? <section className="auth-form auth-card"><Brand /><NewLocation me={me} initial={l} startAt={0} done={async () => { setSalesEditing(false); await refresh(); }} onSalesSubmitted={async () => { setSalesEditing(false); await refresh(); }} /></section> : <SalesPending name={l?.name} category={l?.category} email={me.email} phone={l?.profile?.phone} city={l?.profile?.city || l?.profile?.address} onEdit={() => setSalesEditing(true)} onSignOut={async () => { await api("/auth/logout", "POST"); window.location.replace("/login"); }} />}
+        {verificationRequired ? <VerificationRequired email={me.email} onSignOut={async () => { await api("/auth/logout", "POST"); window.location.replace("/login"); }} /> : needsOnboarding ? <section className="auth-form auth-card"><Brand /><NewLocation me={me} initial={l} done={refresh} /></section> : paymentRequired ? <section className="auth-form auth-card"><Brand /><NewLocation me={me} initial={l} forcePayment done={refresh} /></section> : salesEditing ? <section className="auth-form auth-card"><Brand /><NewLocation me={me} initial={l} startAt={0} done={async () => { setSalesEditing(false); await refresh(); }} onSalesSubmitted={async () => { setSalesEditing(false); await refresh(); }} /></section> : <SalesPending name={l?.name} category={l?.category} email={me.email} phone={l?.profile?.phone} city={l?.profile?.city || l?.profile?.address} onEdit={() => setSalesEditing(true)} onSignOut={async () => { await api("/auth/logout", "POST"); window.location.replace("/login"); }} />}
       </div>
     );
   return (
@@ -3104,7 +3102,7 @@ function Recovery({ mode }: any) {
                   : "Password updated. Sign in with your new password.",
             );
           } catch (e) {
-            setError((e as Error).message);
+            setError(mode === "verify" ? "This verification link is invalid or has expired. Request a new verification email." : (e as Error).message);
           }
         }}
       >
@@ -3117,7 +3115,7 @@ function Recovery({ mode }: any) {
         </h1>
         <ErrorBox error={error} />
         {message ? (
-          <p role="status">{message}</p>
+          <><p role="status">{message}</p>{mode === "verify" && <a className="button primary wide" href="/">Continue to setup</a>}</>
         ) : (
           <>
             {mode === "recovery" && (

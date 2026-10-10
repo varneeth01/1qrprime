@@ -177,6 +177,8 @@ small { display: block; color: var(--muted); font-size: 12px; line-height: 1.55;
 .auth-form footer a:hover { color: var(--text); }
 .auth-inline-error, .auth-rate-limit { margin: 0 0 16px; padding: 10px 12px; border-radius: var(--radius-sm); font-size: 12px; line-height: 1.45; }
 .auth-inline-error { color: var(--danger); background: rgba(130,35,35,.12); border: 1px solid rgba(255,120,120,.18); }
+.auth-success { margin: 0 0 16px; padding: 10px 12px; border-radius: var(--radius-sm); color: var(--success); background: rgba(100,180,90,.1); border: 1px solid rgba(140,220,120,.18); font-size: 12px; line-height: 1.45; }
+.verification-email { display: block; margin: -4px 0 18px; overflow-wrap: anywhere; color: var(--text); }
 .auth-rate-limit { color: var(--warning); background: rgba(208,159,58,.1); border: 1px solid rgba(208,159,58,.2); }
 .boot-screen { min-height: 100vh; display: grid; place-content: center; justify-items: center; gap: 15px; padding: 24px; background: var(--bg); }
 .boot-screen .brand { font-size: 20px; }

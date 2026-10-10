@@ -424,6 +424,33 @@ test("registration and product-state responses use stable user-facing contracts"
   db.close();
 });
 
+test("registration is identity-only and establishes a durable verification boundary", async () => {
+  const db = openDb(":memory:"), app = await createApp(db, envSchema.parse({ NODE_ENV: "test" }));
+  const email = `identity-only-${randomUUID()}@example.test`;
+  try {
+    const registration = await app.inject({
+      method: "POST",
+      url: "/api/auth/register",
+      headers: { "x-client": "native" },
+      payload: { email, password: "long identity only password" },
+    });
+    assert.equal(registration.statusCode, 201);
+    assert.equal(registration.json().accountCreated, true);
+    assert.equal(registration.json().token.length, 64);
+    assert.equal((db.prepare("SELECT count(*) n FROM users WHERE email=?").get(email) as any).n, 1);
+    assert.equal((db.prepare("SELECT count(*) n FROM locations").get() as any).n, 0);
+    assert.equal((db.prepare("SELECT name FROM tenants").get() as any).name, "New workspace");
+    assert.equal((db.prepare("SELECT count(*) n FROM email_tokens WHERE purpose='verify'").get() as any).n, 1);
+    const me = await app.inject({ method: "GET", url: "/api/me", headers: { authorization: `Bearer ${registration.json().token}` } });
+    assert.equal(me.statusCode, 200);
+    assert.equal(me.json().emailVerified, false);
+    assert.deepEqual(me.json().locations, []);
+  } finally {
+    await app.close();
+    db.close();
+  }
+});
+
 test("publishing is an authenticated, Prime-gated, idempotent operation", async () => {
   const db = openDb(":memory:"), app = await createApp(db, cfg);
   const email = `publish-${randomUUID()}@example.test`;

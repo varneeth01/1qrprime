@@ -314,8 +314,11 @@ export async function createApp(
     "/api/auth/register",
     { config: { rateLimit: { max: 5, timeWindow: "10 minutes", keyGenerator: authRateKey("signup") } } },
     async (r, reply) => {
+      // `name` remains optional for older native clients and API consumers,
+      // but account creation is intentionally identity-only. Business name
+      // is collected by onboarding after verification.
       const b = credentials
-        .extend({ name: z.string().min(2).max(100) })
+        .extend({ name: z.string().trim().min(2).max(100).optional() })
         .parse(r.body);
       const argon2 = await import("argon2");
       const password = await argon2.hash(b.password);
@@ -325,11 +328,39 @@ export async function createApp(
         fail(409, "An account with this email already exists.", "EMAIL_ALREADY_EXISTS");
       await asyncDb.transaction(async (tx) => {
         await tx.run("INSERT INTO users(id,email,password) VALUES (?,?,?)", [userId, b.email, password]);
-        await tx.run("INSERT INTO tenants(id,name) VALUES (?,?)", [tenant, b.name]);
+        // Tenants predate the separate location/onboarding model and require a
+        // name. Keep a neutral placeholder until the first business is saved.
+        await tx.run("INSERT INTO tenants(id,name) VALUES (?,?)", [tenant, b.name || "New workspace"]);
         await tx.run("INSERT INTO memberships(user_id,tenant_id,role,permissions) VALUES (?,?,?,'{}')", [userId, tenant, "owner"]);
         await authRepository.audit(tx, userId, tenant, "account.created", tenant, {});
       });
-      return await newSession(userId, r, reply);
+      let verificationEmailSent = false;
+      try {
+        const verificationToken = secret();
+        await asyncDb.transaction(async (tx) => {
+          await authRepository.deleteEmailTokens(tx, userId, "verify");
+          await authRepository.createEmailToken(tx, hash(verificationToken), userId, "verify", Date.now() + 86400000);
+        });
+        await sendMail(
+          b.email,
+          "Verify your 1QR Prime email",
+          `Open ${c.PUBLIC_ORIGIN}/verify#${verificationToken} within 24 hours to verify your 1QR Prime account.`,
+        );
+        verificationEmailSent = true;
+      } catch {
+        // Account creation is durable even when external mail delivery is
+        // unavailable. The verification screen can retry delivery.
+      }
+      try {
+        const session = await newSession(userId, r, reply);
+        // New identity-only registrations use the resource-creation status;
+        // preserve 200 for legacy clients that still send the old name field.
+        return reply.code(b.name ? 200 : 201).send({ ...session, accountCreated: true, sessionCreated: true, verificationEmailSent });
+      } catch {
+        // The account is already durable. Let the client offer sign-in rather
+        // than presenting a retry that could be mistaken for a new signup.
+        return reply.code(201).send({ accountCreated: true, sessionCreated: false, verificationEmailSent });
+      }
     },
   );
   app.post(
@@ -564,6 +595,7 @@ export async function createApp(
         onboardingStep: 0,
         onboardingCompleted: false,
       });
+      await tx.run("UPDATE tenants SET name=? WHERE id=? AND name IN ('New workspace','Workspace')", [b.name, b.tenantId]);
       await authRepository.audit(tx, u.id, b.tenantId, "location.created", lid, { category: b.category });
     });
     return await asyncView(await businessRepository.getLocation(lid));
@@ -651,6 +683,7 @@ export async function createApp(
     const mergedProfile = profileSchema.parse({ ...JSON.parse(l.profile), ...(b.profile || {}) });
     await asyncDb.transaction(async (tx) => {
       await businessRepository.saveOnboarding(tx, { id: l.id, name: b.name || null, category: b.category || null, profile: JSON.stringify(mergedProfile), step: b.step, completed: b.completed });
+      if (b.name) await tx.run("UPDATE tenants SET name=? WHERE id=? AND name IN ('New workspace','Workspace')", [b.name, l.tenant_id]);
       await authRepository.audit(tx, u.id, l.tenant_id, "onboarding.saved", l.id, { step: b.step, completed: b.completed });
     });
     return await asyncView(await businessRepository.getLocation(l.id));
