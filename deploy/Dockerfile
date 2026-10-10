@@ -32,6 +32,10 @@ CMD ["sh","-c","node scripts/postgres-migrate.mjs && node apps/api/dist/server.j
 
 FROM deps AS web-build
 COPY apps/web apps/web
+# The web client shares validation, product-state, and error contracts with
+# the repository-level shared package. Keep that source in the container build
+# context just as it is available to the workspace build on the host.
+COPY shared shared
 RUN npm run build -w apps/web
 
 FROM nginx:1.27-alpine AS web-runtime
