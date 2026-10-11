@@ -5,7 +5,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { openDb } from "../src/db.js";
-import { createApp } from "../src/app.js";
+import { createApp, normalizePaymentAmount } from "../src/app.js";
 import { envSchema } from "../src/config.js";
 const cfg = envSchema.parse({ NODE_ENV: "test" });
 test("durable migrations and records survive closing the database", () => {
@@ -470,6 +470,13 @@ test("a new merchant can create a Prime checkout order on the PostgreSQL-compati
     await app.close();
     db.close();
   }
+});
+
+test("PostgreSQL BIGINT plan amounts are accepted without weakening payment validation", () => {
+  assert.equal(normalizePaymentAmount("59900"), 59900);
+  assert.equal(normalizePaymentAmount(59900), 59900);
+  assert.equal(normalizePaymentAmount("99"), null);
+  assert.equal(normalizePaymentAmount("not-an-amount"), null);
 });
 
 test("registration and product-state responses use stable user-facing contracts", async () => {

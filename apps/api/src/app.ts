@@ -53,6 +53,10 @@ const normalizeSlug = (value: string) => value
   .replace(/[^a-z0-9]+/g, "-")
   .replace(/-+/g, "-")
   .replace(/^-|-$/g, "");
+export const normalizePaymentAmount = (value: unknown) => {
+  const amount = typeof value === "number" ? value : Number(value);
+  return Number.isSafeInteger(amount) && amount >= 100 ? amount : null;
+};
 const hash = (s: string) => createHash("sha256").update(s).digest("hex");
 const fail = (statusCode: number, message: string, code?: string): never => {
   throw Object.assign(new Error(message), { statusCode, appCode: code });
@@ -527,7 +531,8 @@ export async function createApp(
       fail(403, "Prime is currently available for restaurants, cafes and hotels.", "PLAN_NOT_ELIGIBLE");
     const plan = await asyncDb.get<any>("SELECT id,name,price_paise,currency FROM plans WHERE id=? AND active IS TRUE", [b.planCode]);
     if (!plan) fail(400, "That plan is not available");
-    if (!Number.isInteger(plan.price_paise) || plan.price_paise < 100)
+    const amountPaise = normalizePaymentAmount(plan.price_paise);
+    if (amountPaise === null)
       fail(400, "Payment amount is invalid", "VALIDATION_ERROR");
     if (!c.RAZORPAY_KEY_ID || !c.RAZORPAY_KEY_SECRET) {
       r.log.error({
@@ -541,7 +546,7 @@ export async function createApp(
       fail(503, "Payments are temporarily unavailable.", "PAYMENT_UNAVAILABLE");
     }
     const receipt = `prime_${id().replaceAll("-", "")}`;
-    r.log.info({ event: "razorpay_order_create_started", amount: plan.price_paise, currency: plan.currency || "INR" }, "Razorpay order creation started");
+    r.log.info({ event: "razorpay_order_create_started", amount: amountPaise, currency: plan.currency || "INR" }, "Razorpay order creation started");
     let response: Response | undefined;
     try {
       response = await fetch("https://api.razorpay.com/v1/orders", {
@@ -550,7 +555,7 @@ export async function createApp(
           Authorization: `Basic ${Buffer.from(`${c.RAZORPAY_KEY_ID}:${c.RAZORPAY_KEY_SECRET}`).toString("base64")}`,
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ amount: plan.price_paise, currency: plan.currency || "INR", receipt, notes: { tenant_id: location.tenant_id, plan_id: plan.id } }),
+        body: JSON.stringify({ amount: amountPaise, currency: plan.currency || "INR", receipt, notes: { tenant_id: location.tenant_id, plan_id: plan.id } }),
       });
     } catch (error) {
       r.log.error({ event: "razorpay_order_create_failed", provider: "razorpay", error: error instanceof Error ? error.message : "request failed" }, "Razorpay order request failed");
@@ -566,14 +571,14 @@ export async function createApp(
       fail(502, "Payments are temporarily unavailable.", "PAYMENT_UNAVAILABLE");
     }
     const order = providerError as { id?: string; amount?: number; currency?: string };
-    if (!order.id || order.amount !== plan.price_paise) {
+    if (!order.id || order.amount !== amountPaise) {
       r.log.error({ event: "razorpay_order_create_failed", provider: "razorpay", upstreamStatus: providerResponse.status, reason: "unexpected order response" }, "Razorpay returned an invalid order response");
       fail(502, "Payments are temporarily unavailable.", "PAYMENT_UNAVAILABLE");
     }
     r.log.info({ event: "razorpay_order_create_succeeded", provider: "razorpay", amount: order.amount, currency: order.currency || "INR" }, "Razorpay order created");
     await asyncDb.run(
       "INSERT INTO billing_payments(id,user_id,tenant_id,plan_id,provider_order_id,amount_paise,currency,status,receipt) VALUES (?,?,?,?,?,?,?,?,?)",
-      [id(), u.id, location.tenant_id, plan.id, order.id, order.amount, order.currency || "INR", "CREATED", receipt],
+      [id(), u.id, location.tenant_id, plan.id, order.id, amountPaise, order.currency || "INR", "CREATED", receipt],
     );
     return { order_id: order.id, orderId: order.id, amount: order.amount, currency: order.currency || "INR", keyId: c.RAZORPAY_KEY_ID, planCode: plan.id };
   });
