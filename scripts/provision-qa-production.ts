@@ -8,7 +8,6 @@
  */
 import argon2 from "argon2";
 import { randomBytes, randomUUID } from "node:crypto";
-import { createPostgresDatabase } from "../apps/api/src/async-db.js";
 
 const QA_CONFIRMATION = "OLIVE_AND_EMBER_QA";
 const QA_BUSINESS = "Olive & Ember QA";
@@ -18,6 +17,11 @@ if (process.env.NODE_ENV !== "production") throw new Error("Production QA provis
 if (process.env.DATABASE_DRIVER !== "postgres") throw new Error("Production QA provisioning requires DATABASE_DRIVER=postgres");
 if (process.env.ALLOW_PRODUCTION_QA_PROVISIONING !== "true") throw new Error("Set ALLOW_PRODUCTION_QA_PROVISIONING=true for this one-time command");
 if (process.env.PROD_QA_PROVISION_CONFIRM !== QA_CONFIRMATION) throw new Error("Set PROD_QA_PROVISION_CONFIRM=OLIVE_AND_EMBER_QA for this one-time command");
+
+// The production image contains the compiled API runtime, not apps/api/src.
+// Load it only after the safety guards so a disabled provisioner can always
+// fail closed without opening a database connection or requiring runtime code.
+const { createPostgresDatabase } = await import("../apps/api/dist/async-db.js");
 
 const ownerEmail = process.env.PROD_QA_OWNER_EMAIL?.trim().toLowerCase();
 const ownerPassword = process.env.PROD_QA_OWNER_PASSWORD;
