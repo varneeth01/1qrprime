@@ -413,6 +413,65 @@ test("Razorpay checkout verifies HMAC before activating Prime and is idempotent"
   } finally { await app.close(); db.close(); }
 });
 
+test("a new merchant can create a Prime checkout order on the PostgreSQL-compatible plan query", async () => {
+  const db = openDb(":memory:");
+  const app = await createApp(db, envSchema.parse({
+    NODE_ENV: "test",
+    RAZORPAY_KEY_ID: "rzp_test_key",
+    RAZORPAY_KEY_SECRET: "test-razorpay-secret",
+  }));
+  const originalFetch = globalThis.fetch;
+  try {
+    const registration = await app.inject({
+      method: "POST",
+      url: "/api/auth/register",
+      headers: { "x-client": "native" },
+      payload: {
+        email: `new-checkout-${randomUUID()}@example.test`,
+        password: "long new checkout test password",
+        name: "New checkout merchant",
+      },
+    });
+    assert.equal(registration.statusCode, 200);
+    const token = registration.json().token;
+    const tenant = db.prepare("SELECT id FROM tenants").get() as { id: string };
+    const locationId = randomUUID();
+    db.prepare("INSERT INTO locations(id,tenant_id,slug,public_id,name,category,profile) VALUES (?,?,?,?,?,?,?)").run(
+      locationId,
+      tenant.id,
+      `new-checkout-${randomUUID().slice(0, 8)}`,
+      randomBytes(16).toString("hex"),
+      "New checkout cafe",
+      "cafe",
+      "{}",
+    );
+    globalThis.fetch = (async () => new Response(JSON.stringify({ id: "order_test_new_merchant", amount: 59900, currency: "INR" }), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    })) as typeof fetch;
+    const response = await app.inject({
+      method: "POST",
+      url: "/api/billing/checkout/order",
+      headers: { authorization: `Bearer ${token}` },
+      payload: { planCode: "prime", locationId },
+    });
+    assert.equal(response.statusCode, 200);
+    assert.deepEqual(response.json(), {
+      order_id: "order_test_new_merchant",
+      orderId: "order_test_new_merchant",
+      amount: 59900,
+      currency: "INR",
+      keyId: "rzp_test_key",
+      planCode: "prime",
+    });
+    assert.equal((db.prepare("SELECT status,amount_paise,currency FROM billing_payments WHERE provider_order_id=?").get("order_test_new_merchant") as any).status, "CREATED");
+  } finally {
+    globalThis.fetch = originalFetch;
+    await app.close();
+    db.close();
+  }
+});
+
 test("registration and product-state responses use stable user-facing contracts", async () => {
   const db = openDb(":memory:"), app = await createApp(db, envSchema.parse({ NODE_ENV: "test" }));
   const email = `duplicate-${randomUUID()}@example.test`;

@@ -485,7 +485,7 @@ export async function createApp(
     const tid = (r.params as any).tid;
     const u = await membership(r, tid, ["owner"]);
     const b = z.object({ planId: z.string().regex(/^[a-z_]{2,30}$/) }).parse(r.body);
-    const plan = await asyncDb.get<any>("SELECT id FROM plans WHERE id=? AND active=1", [b.planId]);
+    const plan = await asyncDb.get<any>("SELECT id FROM plans WHERE id=? AND active IS TRUE", [b.planId]);
     if (!plan) fail(400, "That plan is not available");
     if (b.planId === "prime") {
       const locations = await asyncDb.all<any>("SELECT category FROM locations WHERE tenant_id=?", [tid]);
@@ -525,7 +525,7 @@ export async function createApp(
     const u = await membership(r, location.tenant_id, ["owner"]);
     if (!isPrimeEligibleCategory(location.category))
       fail(403, "Prime is currently available for restaurants, cafes and hotels.", "PLAN_NOT_ELIGIBLE");
-    const plan = await asyncDb.get<any>("SELECT id,name,price_paise,currency FROM plans WHERE id=? AND active=1", [b.planCode]);
+    const plan = await asyncDb.get<any>("SELECT id,name,price_paise,currency FROM plans WHERE id=? AND active IS TRUE", [b.planCode]);
     if (!plan) fail(400, "That plan is not available");
     if (!Number.isInteger(plan.price_paise) || plan.price_paise < 100)
       fail(400, "Payment amount is invalid", "VALIDATION_ERROR");
