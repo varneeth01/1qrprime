@@ -2215,7 +2215,7 @@ function Admin() {
               <span>
                 <strong>{a.name}</strong>
                 <small>
-                  {a.email} · {a.billing_state}
+                  {a.email} · {a.billing_state} {a.owner_account_type === "internal_qa" && a.billing_source === "internal_qa" ? "· INTERNAL QA" : ""}
                 </small>
               </span>
               <ChevronRight />
@@ -2226,7 +2226,7 @@ function Admin() {
         {selected && (
           <section className="card">
             <div className="card-heading">
-              <div><h2>{selected.tenant.name}</h2><p>Account detail and operational history</p></div>
+              <div><h2>{selected.tenant.name}</h2><p>Account detail and operational history</p>{selected.tenant.internal_qa_authorized && selected.tenant.billing_source === "internal_qa" && <Badge tone="amber">INTERNAL QA</Badge>}</div>
               <button className="text-button" onClick={() => setSelected(null)}>Close</button>
             </div>
             <p>
