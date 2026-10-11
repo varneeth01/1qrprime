@@ -14,6 +14,9 @@ test("product state gates navigation until the account is ready", () => {
   assert.equal(resolveProductState({ locations: [], tenants: [] }), "AUTHENTICATED_ACCOUNT_SETUP");
   assert.equal(resolveProductState(base({ locations: [{ id: "l1", tenant_id: "t1", category: "restaurant", published: false, onboarding: { completed: false }, role: "owner" }] })), "AUTHENTICATED_ACCOUNT_SETUP");
   assert.equal(resolveProductState(base({ tenants: [{ id: "t1", billing_state: "free" }] })), "PRIME_PAYMENT_REQUIRED");
+  assert.equal(resolveProductState(base({ internalQa: true, tenants: [{ id: "t1", billing_state: "active", billing_source: "internal_qa" }] })), "ACTIVE_MERCHANT");
+  assert.equal(resolveProductState(base({ internalQa: false, tenants: [{ id: "t1", billing_state: "active", billing_source: "internal_qa" }] })), "PRIME_PAYMENT_REQUIRED");
+  assert.equal(resolveProductState(base({ internalQa: true, tenants: [{ id: "t1", billing_state: "free", billing_source: "internal_qa" }] })), "PRIME_PAYMENT_REQUIRED");
   assert.equal(resolveProductState(base()), "ACTIVE_MERCHANT");
   assert.equal(resolveProductState(base({ locations: [{ ...base().locations[0], role: "staff" }] })), "STAFF_ACTIVE");
   assert.equal(resolveProductState(base({ locations: [{ ...base().locations[0], category: "retail" }] })), "SALES_CONTACT_PENDING");

@@ -19,14 +19,14 @@ export class AdminRepository {
   accounts(query: string) {
     const pattern = `%${query}%`;
     return this.db.all<any>(
-      "SELECT t.*,u.id owner_id,u.email,u.email_verified,u.created_at owner_created_at,u.last_login_at,u.last_active_at,p.name plan_name,p.price_paise plan_price_paise FROM tenants t JOIN memberships m ON m.tenant_id=t.id AND m.role='owner' JOIN users u ON u.id=m.user_id JOIN plans p ON p.id=t.plan_id WHERE t.name LIKE ? OR u.email LIKE ? LIMIT 100",
+      "SELECT t.*,u.id owner_id,u.email,u.email_verified,u.account_type owner_account_type,u.created_at owner_created_at,u.last_login_at,u.last_active_at,p.name plan_name,p.price_paise plan_price_paise FROM tenants t JOIN memberships m ON m.tenant_id=t.id AND m.role='owner' JOIN users u ON u.id=m.user_id JOIN plans p ON p.id=t.plan_id WHERE t.name LIKE ? OR u.email LIKE ? LIMIT 100",
       [pattern, pattern],
     );
   }
 
   accountDetail(tenantId: string) {
     return Promise.all([
-      this.db.get<any>("SELECT t.*,p.name plan_name,p.price_paise plan_price_paise,p.original_price_paise plan_original_price_paise,p.currency plan_currency,p.max_staff plan_max_staff,p.entitlements FROM tenants t JOIN plans p ON p.id=t.plan_id WHERE t.id=?", [tenantId]),
+      this.db.get<any>("SELECT t.*,p.name plan_name,p.price_paise plan_price_paise,p.original_price_paise plan_original_price_paise,p.currency plan_currency,p.max_staff plan_max_staff,p.entitlements,EXISTS(SELECT 1 FROM memberships qm JOIN users qu ON qu.id=qm.user_id WHERE qm.tenant_id=t.id AND qm.role='owner' AND qu.account_type='internal_qa') AS internal_qa_authorized FROM tenants t JOIN plans p ON p.id=t.plan_id WHERE t.id=?", [tenantId]),
       this.db.all<any>("SELECT id,name,category,public_id,slug,profile,published,status FROM locations WHERE tenant_id=? ORDER BY name", [tenantId]),
       this.db.all<any>("SELECT u.id,u.email,m.role,m.permissions,u.last_active_at FROM users u JOIN memberships m ON m.user_id=u.id WHERE m.tenant_id=? ORDER BY u.email", [tenantId]),
       this.db.all<any>("SELECT id,created_at,success,client_type,platform,ip_address,user_agent FROM login_events WHERE user_id IN (SELECT user_id FROM memberships WHERE tenant_id=?) ORDER BY created_at DESC LIMIT 50", [tenantId]),

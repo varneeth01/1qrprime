@@ -215,9 +215,14 @@ export async function createApp(
     return { ...u, role: m.role, permissions: typeof m.permissions === "string" ? JSON.parse(m.permissions || "{}") : (m.permissions || {}) };
   };
   const asyncEnt = async (tenant: string) => {
-    const t = await asyncDb.get<any>("SELECT t.*,p.entitlements,p.name plan_name,p.price_paise plan_price_paise FROM tenants t JOIN plans p ON p.id=t.plan_id WHERE t.id=?", [tenant]);
+    const t = await asyncDb.get<any>("SELECT t.*,p.entitlements,p.name plan_name,p.price_paise plan_price_paise,EXISTS(SELECT 1 FROM memberships qm JOIN users qu ON qu.id=qm.user_id WHERE qm.tenant_id=t.id AND qm.role='owner' AND qu.account_type='internal_qa') AS internal_qa_authorized FROM tenants t JOIN plans p ON p.id=t.plan_id WHERE t.id=?", [tenant]);
     if (t) t.billing_interval = "month";
     if (!t) fail(404, "Business not found");
+    // INTERNAL_QA is a two-part, server-provisioned entitlement. A tenant
+    // marker without an explicitly marked owner must never grant paid access.
+    if (t.billing_source === "internal_qa" && !t.internal_qa_authorized) {
+      t.billing_state = "free";
+    }
     return { ...t, entitlements: JSON.parse(t.entitlements) };
   };
   const asyncMenuView = (locationId: string) => menuRepository.getMenu(locationId);
@@ -462,6 +467,7 @@ export async function createApp(
       id: u.id,
       email: u.email,
       adminRole: u.admin_role,
+      internalQa: u.account_type === "internal_qa",
       emailVerified: !!u.email_verified,
       tenants: await Promise.all(tenants.map(async (t) => ({ ...t, ...(await asyncEnt(t.id)) }))),
       locations: await Promise.all(locations.map(asyncView)),
@@ -487,7 +493,7 @@ export async function createApp(
         fail(403, "Prime is currently available for restaurants, cafes and hotels.", "PLAN_NOT_ELIGIBLE");
     }
     await asyncDb.transaction(async (tx) => {
-      await tx.run("UPDATE tenants SET plan_id=?,billing_state=? WHERE id=?", [b.planId, "free", tid]);
+      await tx.run("UPDATE tenants SET plan_id=?,billing_state=?,billing_source='standard' WHERE id=?", [b.planId, "free", tid]);
       await authRepository.audit(tx, u.id, tid, "plan.selected", tid, { planId: b.planId, activation: "pending" });
     });
     return { ok: true, planId: b.planId, billingState: "free" };
@@ -584,7 +590,7 @@ export async function createApp(
     await asyncDb.transaction(async (tx) => {
       const changed = await tx.run("UPDATE billing_payments SET provider_payment_id=?,status='VERIFIED',verified_at=CURRENT_TIMESTAMP WHERE provider_order_id=? AND status='CREATED'", [b.razorpayPaymentId, b.razorpayOrderId]);
       if (!changed.rowCount) return;
-      await tx.run("UPDATE tenants SET plan_id=?,billing_state='active' WHERE id=?", [payment.plan_id, payment.tenant_id]);
+      await tx.run("UPDATE tenants SET plan_id=?,billing_state='active',billing_source='standard' WHERE id=?", [payment.plan_id, payment.tenant_id]);
       await authRepository.audit(tx, payment.user_id, payment.tenant_id, "billing.payment.verified", payment.id, { provider: "razorpay", providerOrderId: b.razorpayOrderId });
     });
     return { ok: true, status: "VERIFIED" };

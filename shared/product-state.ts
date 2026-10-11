@@ -21,7 +21,9 @@ export function resolveProductState(me: any): ProductState {
   const tenant = me.tenants?.find((item: any) => item.id === location.tenant_id) || me.tenants?.[0];
   if (location.role && location.role !== "owner") return "STAFF_ACTIVE";
   if (!["restaurant", "cafe", "hotel"].includes(location.category)) return "SALES_CONTACT_PENDING";
-  if (tenant?.billing_state !== "active") return "PRIME_PAYMENT_REQUIRED";
+  if (tenant?.billing_source === "internal_qa" && me.internalQa !== true) return "PRIME_PAYMENT_REQUIRED";
+  const hasInternalQaEntitlement = me.internalQa === true && tenant?.billing_source === "internal_qa" && tenant?.billing_state === "active";
+  if (tenant?.billing_state !== "active" && !hasInternalQaEntitlement) return "PRIME_PAYMENT_REQUIRED";
   return "ACTIVE_MERCHANT";
 }
 

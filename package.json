@@ -24,6 +24,8 @@
     "test:ui": "npm run test:validation -w apps/web",
     "build:api": "npm run build -w apps/api",
     "android:release": "node scripts/android-release.mjs",
+    "qa:seed": "tsx scripts/seed-qa.ts",
+    "qa:provision:production": "tsx scripts/provision-qa-production.ts",
     "test": "npm run test -w apps/api",
     "typecheck": "npm run typecheck --workspaces --if-present",
     "seed:restaurant": "tsx scripts/seed-restaurant.ts"
