@@ -286,10 +286,11 @@ function MarketingFooter() {
       <small className="brand-alias">1QR Prime · One QR Prime · 1QRPrime</small>
     </div>
     <div className="footer-links">
-      <div><b>Product</b><a href="/features">Features</a><a href="/pricing">Pricing</a><a href="/restaurant-software">Restaurant software</a><a href="/qr-menu">QR menu</a><a href="/one-qr">One QR</a></div>
-      <div><b>Solutions</b><a href="/restaurants">Restaurants</a><a href="/cafes">Cafés</a><a href="/hotels">Hotels</a><a href="/restaurant-ordering-system">Ordering</a><a href="/qr-menu-india">India</a></div>
-      <div><b>Resources</b><a href="/blog">Journal</a><a href="/about">About</a><a href="/contact">Contact</a><a href="/support">Support</a><a href="/llms.txt">LLMs</a></div>
-      <div><b>Account</b><a href="/login">Sign in</a><a href="/signup">Create account</a><a href="/privacy">Privacy</a><a href="/terms">Terms</a></div>
+      <div><b>Product</b><a href="/features">Features</a><a href="/pricing">Pricing</a><a href="/one-qr">One QR</a><a href="/qr-menu">QR menu</a><a href="/digital-menu">Digital menu</a><a href="/dynamic-qr-menu">Dynamic QR</a></div>
+      <div><b>Restaurant</b><a href="/restaurant-software">Restaurant software</a><a href="/restaurant-management-software">Management software</a><a href="/restaurant-ordering-system">Ordering system</a><a href="/table-ordering-system">Table ordering</a><a href="/restaurant-qr">Restaurant QR</a></div>
+      <div><b>Solutions</b><a href="/restaurants">Restaurants</a><a href="/cafe-software">Café software</a><a href="/cafes">Cafés</a><a href="/hotel-qr">Hotel QR</a><a href="/hotels">Hotels</a><a href="/upi-restaurant-ordering">UPI ordering</a></div>
+      <div><b>India</b><a href="/qr-menu-india">QR menu India</a><a href="/restaurant-software-bangalore">Restaurant software Bengaluru</a><a href="/qr-menu-bangalore">QR menu Bengaluru</a><a href="/blog/restaurant-software-india-buyers-guide">Software guide</a><a href="/blog/restaurant-qr-menu-india-guide">QR menu guide</a></div>
+      <div><b>Resources</b><a href="/blog">Journal</a><a href="/about">About</a><a href="/contact">Contact</a><a href="/support">Support</a><a href="/llms.txt">LLMs</a><a href="/privacy">Privacy</a><a href="/terms">Terms</a></div>
     </div>
     <small>© {new Date().getFullYear()} 1QR Prime. Built for local business.</small>
   </footer>;
