@@ -1,20 +1,20 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
-  <url><loc>https://1qrprime.com/</loc></url>
-  <url><loc>https://1qrprime.com/features</loc></url>
-  <url><loc>https://1qrprime.com/pricing</loc></url>
-  <url><loc>https://1qrprime.com/restaurants</loc></url>
-  <url><loc>https://1qrprime.com/cafes</loc></url>
-  <url><loc>https://1qrprime.com/hotels</loc></url>
-  <url><loc>https://1qrprime.com/blog</loc></url>
-  <url><loc>https://1qrprime.com/blog/qr-code-menu-for-restaurants</loc></url>
-  <url><loc>https://1qrprime.com/blog/how-to-create-digital-menu-qr-code</loc></url>
-  <url><loc>https://1qrprime.com/blog/qr-ordering-for-restaurants</loc></url>
-  <url><loc>https://1qrprime.com/blog/dynamic-vs-static-qr-menu</loc></url>
-  <url><loc>https://1qrprime.com/blog/upi-qr-ordering-restaurants-india</loc></url>
-  <url><loc>https://1qrprime.com/blog/qr-menu-for-cafes</loc></url>
-  <url><loc>https://1qrprime.com/blog/dynamic-restaurant-menu-no-reprint</loc></url>
-  <url><loc>https://1qrprime.com/contact</loc></url>
-  <url><loc>https://1qrprime.com/privacy</loc></url>
-  <url><loc>https://1qrprime.com/terms</loc></url>
+  <url><loc>https://1qrprime.com/</loc><lastmod>2026-10-23</lastmod><changefreq>weekly</changefreq><priority>1.0</priority></url>
+  <url><loc>https://1qrprime.com/features</loc><lastmod>2026-10-23</lastmod><changefreq>weekly</changefreq><priority>0.9</priority></url>
+  <url><loc>https://1qrprime.com/pricing</loc><lastmod>2026-10-23</lastmod><changefreq>weekly</changefreq><priority>0.9</priority></url>
+  <url><loc>https://1qrprime.com/restaurants</loc><lastmod>2026-10-23</lastmod><changefreq>weekly</changefreq><priority>0.9</priority></url>
+  <url><loc>https://1qrprime.com/cafes</loc><lastmod>2026-10-23</lastmod><changefreq>weekly</changefreq><priority>0.85</priority></url>
+  <url><loc>https://1qrprime.com/hotels</loc><lastmod>2026-10-23</lastmod><changefreq>weekly</changefreq><priority>0.85</priority></url>
+  <url><loc>https://1qrprime.com/blog</loc><lastmod>2026-10-23</lastmod><changefreq>weekly</changefreq><priority>0.8</priority></url>
+  <url><loc>https://1qrprime.com/blog/qr-code-menu-for-restaurants</loc><lastmod>2026-10-23</lastmod><changefreq>monthly</changefreq><priority>0.75</priority></url>
+  <url><loc>https://1qrprime.com/blog/how-to-create-digital-menu-qr-code</loc><lastmod>2026-10-23</lastmod><changefreq>monthly</changefreq><priority>0.75</priority></url>
+  <url><loc>https://1qrprime.com/blog/qr-ordering-for-restaurants</loc><lastmod>2026-10-23</lastmod><changefreq>monthly</changefreq><priority>0.75</priority></url>
+  <url><loc>https://1qrprime.com/blog/dynamic-vs-static-qr-menu</loc><lastmod>2026-10-23</lastmod><changefreq>monthly</changefreq><priority>0.7</priority></url>
+  <url><loc>https://1qrprime.com/blog/upi-qr-ordering-restaurants-india</loc><lastmod>2026-10-23</lastmod><changefreq>monthly</changefreq><priority>0.75</priority></url>
+  <url><loc>https://1qrprime.com/blog/qr-menu-for-cafes</loc><lastmod>2026-10-23</lastmod><changefreq>monthly</changefreq><priority>0.7</priority></url>
+  <url><loc>https://1qrprime.com/blog/dynamic-restaurant-menu-no-reprint</loc><lastmod>2026-10-23</lastmod><changefreq>monthly</changefreq><priority>0.7</priority></url>
+  <url><loc>https://1qrprime.com/contact</loc><lastmod>2026-10-23</lastmod><changefreq>monthly</changefreq><priority>0.6</priority></url>
+  <url><loc>https://1qrprime.com/privacy</loc><lastmod>2026-10-23</lastmod><changefreq>yearly</changefreq><priority>0.3</priority></url>
+  <url><loc>https://1qrprime.com/terms</loc><lastmod>2026-10-23</lastmod><changefreq>yearly</changefreq><priority>0.3</priority></url>
 </urlset>

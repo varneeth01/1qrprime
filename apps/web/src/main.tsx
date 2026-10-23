@@ -523,6 +523,19 @@ function App() {
             </strong>
           </span>
           <div className="topbar-context">
+            <select
+              className="mobile-business-select"
+              aria-label="Active business"
+              value={lid || "all"}
+              onChange={(e) => {
+                const next = e.target.value;
+                setLid(next === "all" ? "" : next);
+                if (next === "all") setSection("portfolio");
+              }}
+            >
+              {me.locations.length > 1 && <option value="all">All businesses</option>}
+              {me.locations.map((x: Any) => <option key={x.id} value={x.id}>{x.name}</option>)}
+            </select>
             <span className="topbar-business-status">{tenant?.name || "Business"}</span>
             {l?.published && <Badge tone="green">Live</Badge>}
           </div>

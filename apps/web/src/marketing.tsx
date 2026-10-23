@@ -53,41 +53,147 @@ const articles: Article[] = [
 ];
 
 const marketingPages = new Set(["/", "/features", "/pricing", "/restaurants", "/cafes", "/hotels", "/blog", "/contact", "/support", "/privacy", "/terms"]);
-const pageMeta: Record<string, { title: string; description: string }> = {
-  "/": { title: "1QR Prime — One QR. Your whole business.", description: "A permanent QR menu, customer page, orders and payment tools for restaurants, cafés and hotels." },
-  "/features": { title: "Features — 1QR Prime", description: "The permanent QR workspace for menus, orders, tables, payments, staff and customer actions." },
-  "/pricing": { title: "Pricing — 1QR Prime", description: "Prime is ₹599 per month for restaurants, cafés and hotels. See what is included." },
-  "/restaurants": { title: "QR Menu for Restaurants — 1QR Prime", description: "A restaurant QR ordering system with a permanent menu, orders, tables and team access." },
-  "/cafes": { title: "QR Menu for Cafés — 1QR Prime", description: "A calm digital menu and ordering experience for modern cafés." },
-  "/hotels": { title: "Hotel QR Guest Pages — 1QR Prime", description: "A practical QR guest experience for hotel menus, information and customer actions." },
-  "/blog": { title: "The 1QR Prime Journal", description: "Useful guides to QR menus, restaurant ordering, UPI and better customer experiences." },
-  "/contact": { title: "Contact 1QR Prime", description: "Talk to the 1QR Prime team about your business, support or a custom rollout." },
-  "/support": { title: "Support — 1QR Prime", description: "Get practical help with your 1QR Prime workspace, customer page, orders or payments." },
-  "/privacy": { title: "Privacy Policy — 1QR Prime", description: "How 1QR Prime handles account, business and operational data." },
-  "/terms": { title: "Terms — 1QR Prime", description: "The terms for using 1QR Prime merchant and public business services." },
+const SITE_ORIGIN = "https://1qrprime.com";
+const pageMeta: Record<string, { title: string; description: string; keywords?: string }> = {
+  "/": {
+    title: "1QR Prime — One Master QR for Menus, Orders & Payments",
+    description: "1QR Prime gives restaurants, cafés and hotels one permanent master QR for digital menus, ordering, payments and customer actions.",
+    keywords: "1QR Prime, one QR, master QR, restaurant QR menu, digital menu QR, QR ordering system, QR menu India",
+  },
+  "/features": {
+    title: "One QR Business Platform: Menu, Orders, Payments & Staff | 1QR Prime",
+    description: "Run menus, orders, tables, payment destinations, staff access, analytics and customer actions behind one permanent QR.",
+    keywords: "business QR platform, dynamic QR menu, QR ordering, restaurant operations software",
+  },
+  "/pricing": {
+    title: "1QR Prime Pricing — One Master QR from ₹599/month",
+    description: "See launch pricing for 1QR Prime, the permanent master QR workspace for restaurants, cafés and hotels.",
+  },
+  "/restaurants": {
+    title: "Restaurant QR Menu & Ordering System in India | 1QR Prime",
+    description: "Create one permanent restaurant QR for digital menus, table ordering, UPI payment handoff, staff workflows and customer actions.",
+    keywords: "restaurant QR menu India, QR ordering system, digital menu for restaurant, table QR ordering",
+  },
+  "/cafes": {
+    title: "QR Menu & Ordering System for Cafés | 1QR Prime",
+    description: "Give café guests one fast QR for your live menu, ordering, payment actions and updates without reprinting the code.",
+    keywords: "cafe QR menu, digital cafe menu, cafe ordering QR",
+  },
+  "/hotels": {
+    title: "Hotel Guest QR: Menu, Service & Customer Actions | 1QR Prime",
+    description: "Use one permanent hotel guest QR for menus, information, service actions and a cleaner mobile guest experience.",
+    keywords: "hotel guest QR, hotel digital menu, hotel service QR",
+  },
+  "/blog": {
+    title: "QR Menu, Ordering & Restaurant Growth Guides | 1QR Prime",
+    description: "Practical guides on dynamic QR menus, restaurant ordering, UPI handoffs and better mobile customer experiences.",
+  },
+  "/contact": { title: "Contact 1QR Prime", description: "Talk to the 1QR Prime team about one-QR business rollouts, support or a custom requirement." },
+  "/support": { title: "1QR Prime Support", description: "Get practical help with your 1QR Prime workspace, customer QR, orders, menu or payment setup." },
+  "/privacy": { title: "Privacy Policy | 1QR Prime", description: "How 1QR Prime handles merchant account, business, customer-page and operational data." },
+  "/terms": { title: "Terms of Service | 1QR Prime", description: "Terms for using the 1QR Prime merchant workspace and public business QR services." },
 };
 
 function Meta({ path, article }: { path: string; article?: Article }) {
   useEffect(() => {
-    const meta = article ? { title: `${article.title} — 1QR Prime`, description: article.description } : pageMeta[path] || pageMeta["/"];
+    const meta = article
+      ? { title: `${article.title} | 1QR Prime`, description: article.description, keywords: undefined }
+      : pageMeta[path] || pageMeta["/"];
+    const canonicalUrl = `${SITE_ORIGIN}${path === "/" ? "/" : path}`;
     document.title = meta.title;
-    const set = (selector: string, attr: string, value: string) => { let el = document.querySelector(selector) as HTMLMetaElement | null; if (!el) { el = document.createElement("meta"); document.head.appendChild(el); } el.setAttribute(attr, value); };
-    set('meta[name="description"]', "content", meta.description);
-    set('meta[property="og:title"]', "content", meta.title);
-    set('meta[property="og:description"]', "content", meta.description);
-    set('meta[property="og:type"]', "content", article ? "article" : "website");
-    set('meta[property="og:url"]', "content", `${window.location.origin}${path}`);
+
+    const setMeta = (selector: string, name: string, value: string) => {
+      let el = document.querySelector(selector) as HTMLMetaElement | null;
+      if (!el) {
+        el = document.createElement("meta");
+        document.head.appendChild(el);
+      }
+      el.setAttribute(name, value);
+    };
+
+    setMeta('meta[name="description"]', "content", meta.description);
+    setMeta('meta[name="robots"]', "content", "index,follow,max-image-preview:large,max-snippet:-1,max-video-preview:-1");
+    const keywordMeta = document.querySelector('meta[name="keywords"]') as HTMLMetaElement | null;
+    if (meta.keywords) setMeta('meta[name="keywords"]', "content", meta.keywords);
+    else keywordMeta?.remove();
+    setMeta('meta[property="og:title"]', "content", meta.title);
+    setMeta('meta[property="og:description"]', "content", meta.description);
+    setMeta('meta[property="og:type"]', "content", article ? "article" : "website");
+    setMeta('meta[property="og:url"]', "content", canonicalUrl);
+    setMeta('meta[property="og:site_name"]', "content", "1QR Prime");
+    setMeta('meta[property="og:locale"]', "content", "en_IN");
+    setMeta('meta[name="twitter:card"]', "content", "summary");
+    setMeta('meta[name="twitter:title"]', "content", meta.title);
+    setMeta('meta[name="twitter:description"]', "content", meta.description);
+
     let canonical = document.querySelector('link[rel="canonical"]') as HTMLLinkElement | null;
-    if (!canonical) { canonical = document.createElement("link"); canonical.rel = "canonical"; document.head.appendChild(canonical); }
-    canonical.href = `${window.location.origin}${path}`;
+    if (!canonical) {
+      canonical = document.createElement("link");
+      canonical.rel = "canonical";
+      document.head.appendChild(canonical);
+    }
+    canonical.href = canonicalUrl;
+
     const schemaId = "marketing-schema";
     document.getElementById(schemaId)?.remove();
     const schema = document.createElement("script");
     schema.id = schemaId;
     schema.type = "application/ld+json";
-    schema.textContent = JSON.stringify(article ? { "@context": "https://schema.org", "@type": "BlogPosting", headline: article.title, description: article.description, url: `${window.location.origin}${path}`, author: { "@type": "Organization", name: "1QR Prime" } } : { "@context": "https://schema.org", "@type": "Organization", name: "1QR Prime", url: window.location.origin, sameAs: [] });
+    schema.textContent = JSON.stringify(
+      article
+        ? {
+            "@context": "https://schema.org",
+            "@type": "BlogPosting",
+            headline: article.title,
+            description: article.description,
+            url: canonicalUrl,
+            mainEntityOfPage: canonicalUrl,
+            author: { "@type": "Organization", name: "1QR Prime", url: SITE_ORIGIN },
+            publisher: { "@type": "Organization", name: "1QR Prime", url: SITE_ORIGIN },
+          }
+        : path === "/"
+          ? [
+              {
+                "@context": "https://schema.org",
+                "@type": "Organization",
+                name: "1QR Prime",
+                url: SITE_ORIGIN,
+                description: "One permanent master QR for menus, orders, payments and customer actions.",
+                areaServed: { "@type": "Country", name: "India" },
+              },
+              {
+                "@context": "https://schema.org",
+                "@type": "WebSite",
+                name: "1QR Prime",
+                url: SITE_ORIGIN,
+                inLanguage: "en-IN",
+              },
+              {
+                "@context": "https://schema.org",
+                "@type": "SoftwareApplication",
+                name: "1QR Prime",
+                applicationCategory: "BusinessApplication",
+                operatingSystem: "Web",
+                url: SITE_ORIGIN,
+                description: meta.description,
+                offers: { "@type": "Offer", price: "599", priceCurrency: "INR", category: "subscription" },
+              },
+            ]
+          : {
+              "@context": "https://schema.org",
+              "@type": "WebPage",
+              name: meta.title,
+              description: meta.description,
+              url: canonicalUrl,
+              isPartOf: { "@type": "WebSite", name: "1QR Prime", url: SITE_ORIGIN },
+              inLanguage: "en-IN",
+            },
+    );
     document.head.appendChild(schema);
-    return () => { document.title = "1QR Prime · Your business, connected"; };
+
+    return () => {
+      document.title = "1QR Prime — One QR. One master QR.";
+    };
   }, [path, article]);
   return null;
 }
@@ -103,7 +209,7 @@ function FeatureStrip() { return <div className="feature-strip"><div><QrCode /><
 function Landing() {
   const [faq, setFaq] = useState<number | null>(null);
   const faqs = [["What is 1QR Prime?", "A merchant workspace and customer page connected by one permanent QR. Menus, orders, tables, payment destinations and team access live together."], ["Does the QR ever change?", "Your permanent /q/ QR identity is designed to stay stable while the content behind it changes."], ["Do customers need an app?", "No. Customers use the browser on their phone."], ["How many staff accounts are included?", "Prime supports up to five non-owner staff accounts with permission-based access."], ["Which businesses can use Prime?", "Prime currently focuses on restaurants, cafés and hotels. Other categories can talk to the team."], ["Does 1QR Prime process customer money?", "Payment apps and providers handle transfers. 1QR Prime presents the configured destination and keeps the status wording honest."]];
-  return <><Meta path="/" /><MarketingHeader /><main className="marketing-home"><section className="marketing-hero"><div className="hero-copy"><span className="marketing-eyebrow"><Sparkles size={14} /> The calm operating system for local business</span><h1>One QR.<br /><em>Your whole business.</em></h1><p>Menus, orders, payments and customer actions—connected through one permanent QR.</p><div className="hero-actions"><a className="marketing-button light" href="/signup">Start with Prime <ArrowRight size={16} /></a><a className="marketing-text-link" href="#product">See how it works <ArrowRight size={15} /></a></div><small className="hero-note">₹599/month launch price · Built for restaurants, cafés and hotels</small></div><ProductVisual /></section><section className="marketing-section intro-section"><span className="marketing-eyebrow">A better link between you and your guests</span><h2>Print it once.<br /><em>Change everything behind it.</em></h2><p>One permanent QR gives your business a living customer page. Update the menu, payment destination, hours or actions without replacing the thing already on your tables.</p><FeatureStrip /></section><section id="product" className="marketing-section dark-section"><div className="split-story"><div><span className="marketing-eyebrow">From table to order</span><h2>From scan<br /><em>to service.</em></h2><p>No customer app. No account creation. Just a fast, familiar browser experience that gives people the next useful action.</p><a className="marketing-text-link" href="/restaurants">Explore restaurants <ArrowRight size={15} /></a></div><div className="journey"><div><span>01</span><QrCode /><b>Scan</b><small>One permanent QR</small></div><i>→</i><div><span>02</span><Store /><b>Choose</b><small>Menu and actions</small></div><i>→</i><div><span>03</span><ShoppingBag /><b>Serve</b><small>Orders and payment</small></div></div></div></section><section className="marketing-section product-section"><div className="section-heading"><span className="marketing-eyebrow">Your day, in one place</span><h2>Run the day<br /><em>from your phone.</em></h2><p>Orders, menu, tables, QR, payments and staff access—purpose-built for the pace of a real business.</p></div><ProductVisual /><div className="product-links"><a href="/features"><Smartphone />Explore the product <ArrowRight size={15} /></a><a href="/cafes"><Store />See the café experience <ArrowRight size={15} /></a></div></section><section className="marketing-section menu-story"><div><span className="marketing-eyebrow">Menu management</span><h2>Your menu changes.<br /><em>Your QR doesn't.</em></h2><p>Update prices, availability and categories while the link on your table stays familiar to your guests.</p></div><div className="menu-window"><div className="menu-window-head"><span>Menu</span><b>+ Add item</b></div><div className="menu-line"><span className="menu-thumb warm" /><div><b>Masala omelette</b><small>Breakfast · ₹180</small></div><i>Available</i></div><div className="menu-line"><span className="menu-thumb green" /><div><b>Filter coffee</b><small>Drinks · ₹90</small></div><i>Available</i></div><div className="menu-line muted-line"><span className="menu-thumb pale" /><div><b>Seasonal tart</b><small>Desserts · ₹220</small></div><i>Hidden</i></div></div></section><section className="marketing-section pricing-section"><div className="section-heading"><span className="marketing-eyebrow">Simple to start</span><h2>Everything your<br /><em>QR should unlock.</em></h2></div><div className="pricing-layout"><div className="price-card"><div className="price-top"><span>PRIME</span><b>For growing local businesses</b></div><div className="price"><del>₹1,599</del><strong>₹599</strong><span>/ month</span></div><p>Launch pricing for restaurants, cafés and hotels.</p><ul>{["Permanent dynamic QR", "Customer page and digital menu", "Orders and tables", "Payment destination management", "Analytics and up to 5 staff", "Support when you need it"].map(x => <li key={x}><Check size={16} />{x}</li>)}</ul><a className="marketing-button light wide" href="/signup">Start with Prime <ArrowRight size={16} /></a></div><div className="custom-card"><span className="marketing-eyebrow">Something different?</span><h3>Let's build the right rollout.</h3><p>We're onboarding other business categories personally. Talk to the team about a custom requirement.</p><a className="marketing-text-link" href="/contact">Talk to sales <ArrowRight size={15} /></a></div></div></section><section className="marketing-section faq-section"><div className="section-heading"><span className="marketing-eyebrow">Good questions</span><h2>Clear before<br /><em>you begin.</em></h2></div><div className="faq-list">{faqs.map(([q, a], i) => <div className="faq-item" key={q}><button onClick={() => setFaq(faq === i ? null : i)} aria-expanded={faq === i}><span>{q}</span>{faq === i ? <X size={17} /> : <ChevronDown size={17} />}</button>{faq === i && <p>{a}</p>}</div>)}</div></section><section className="marketing-cta-section"><span className="marketing-eyebrow">Ready when you are</span><h2>One QR.<br /><em>Ready for the day.</em></h2><div className="hero-actions"><a className="marketing-button light" href="/signup">Start with Prime <ArrowRight size={16} /></a><a className="marketing-text-link" href="/contact">Talk to sales <ArrowRight size={15} /></a></div></section></main><MarketingFooter /></>;
+  return <><Meta path="/" /><MarketingHeader /><main className="marketing-home"><section className="marketing-hero"><div className="hero-copy"><span className="marketing-eyebrow"><Sparkles size={14} /> 1QR Prime · One master QR for your business</span><h1>One QR.<br /><em>One master QR.</em></h1><p>Your menu, orders, payments and customer actions—connected behind one permanent QR that stays the same as your business changes.</p><div className="hero-actions"><a className="marketing-button light" href="/signup">Start with Prime <ArrowRight size={16} /></a><a className="marketing-text-link" href="#product">See how it works <ArrowRight size={15} /></a></div><small className="hero-note">₹599/month launch price · Built for restaurants, cafés and hotels</small></div><ProductVisual /></section><section className="marketing-section intro-section"><span className="marketing-eyebrow">A better link between you and your guests</span><h2>Print it once.<br /><em>Change everything behind it.</em></h2><p>One permanent QR gives your business a living customer page. Update the menu, payment destination, hours or actions without replacing the thing already on your tables.</p><FeatureStrip /></section><section id="product" className="marketing-section dark-section"><div className="split-story"><div><span className="marketing-eyebrow">From table to order</span><h2>From scan<br /><em>to service.</em></h2><p>No customer app. No account creation. Just a fast, familiar browser experience that gives people the next useful action.</p><a className="marketing-text-link" href="/restaurants">Explore restaurants <ArrowRight size={15} /></a></div><div className="journey"><div><span>01</span><QrCode /><b>Scan</b><small>One permanent QR</small></div><i>→</i><div><span>02</span><Store /><b>Choose</b><small>Menu and actions</small></div><i>→</i><div><span>03</span><ShoppingBag /><b>Serve</b><small>Orders and payment</small></div></div></div></section><section className="marketing-section product-section"><div className="section-heading"><span className="marketing-eyebrow">Your day, in one place</span><h2>Run the day<br /><em>from your phone.</em></h2><p>Orders, menu, tables, QR, payments and staff access—purpose-built for the pace of a real business.</p></div><ProductVisual /><div className="product-links"><a href="/features"><Smartphone />Explore the product <ArrowRight size={15} /></a><a href="/cafes"><Store />See the café experience <ArrowRight size={15} /></a></div></section><section className="marketing-section menu-story"><div><span className="marketing-eyebrow">Menu management</span><h2>Your menu changes.<br /><em>Your QR doesn't.</em></h2><p>Update prices, availability and categories while the link on your table stays familiar to your guests.</p></div><div className="menu-window"><div className="menu-window-head"><span>Menu</span><b>+ Add item</b></div><div className="menu-line"><span className="menu-thumb warm" /><div><b>Masala omelette</b><small>Breakfast · ₹180</small></div><i>Available</i></div><div className="menu-line"><span className="menu-thumb green" /><div><b>Filter coffee</b><small>Drinks · ₹90</small></div><i>Available</i></div><div className="menu-line muted-line"><span className="menu-thumb pale" /><div><b>Seasonal tart</b><small>Desserts · ₹220</small></div><i>Hidden</i></div></div></section><section className="marketing-section pricing-section"><div className="section-heading"><span className="marketing-eyebrow">Simple to start</span><h2>Everything your<br /><em>QR should unlock.</em></h2></div><div className="pricing-layout"><div className="price-card"><div className="price-top"><span>PRIME</span><b>For growing local businesses</b></div><div className="price"><del>₹1,599</del><strong>₹599</strong><span>/ month</span></div><p>Launch pricing for restaurants, cafés and hotels.</p><ul>{["Permanent dynamic QR", "Customer page and digital menu", "Orders and tables", "Payment destination management", "Analytics and up to 5 staff", "Support when you need it"].map(x => <li key={x}><Check size={16} />{x}</li>)}</ul><a className="marketing-button light wide" href="/signup">Start with Prime <ArrowRight size={16} /></a></div><div className="custom-card"><span className="marketing-eyebrow">Something different?</span><h3>Let's build the right rollout.</h3><p>We're onboarding other business categories personally. Talk to the team about a custom requirement.</p><a className="marketing-text-link" href="/contact">Talk to sales <ArrowRight size={15} /></a></div></div></section><section className="marketing-section faq-section"><div className="section-heading"><span className="marketing-eyebrow">Good questions</span><h2>Clear before<br /><em>you begin.</em></h2></div><div className="faq-list">{faqs.map(([q, a], i) => <div className="faq-item" key={q}><button onClick={() => setFaq(faq === i ? null : i)} aria-expanded={faq === i}><span>{q}</span>{faq === i ? <X size={17} /> : <ChevronDown size={17} />}</button>{faq === i && <p>{a}</p>}</div>)}</div></section><section className="marketing-cta-section"><span className="marketing-eyebrow">Ready when you are</span><h2>One QR.<br /><em>Ready for the day.</em></h2><div className="hero-actions"><a className="marketing-button light" href="/signup">Start with Prime <ArrowRight size={16} /></a><a className="marketing-text-link" href="/contact">Talk to sales <ArrowRight size={15} /></a></div></section></main><MarketingFooter /></>;
 }
 
 function MarketingFooter() { return <footer className="marketing-footer"><div><a className="marketing-brand" href="/"><Mark /><span>1QR <b>Prime</b></span></a><p>One QR for the way local business works.</p></div><div className="footer-links"><div><b>Product</b><a href="/features">Features</a><a href="/pricing">Pricing</a><a href="/restaurants">Restaurants</a><a href="/cafes">Cafés</a></div><div><b>Resources</b><a href="/blog">Journal</a><a href="/contact">Contact</a><a href="/support">Support</a></div><div><b>Account</b><a href="/login">Sign in</a><a href="/signup">Create account</a><a href="/privacy">Privacy</a><a href="/terms">Terms</a></div></div><small>© {new Date().getFullYear()} 1QR Prime. Built for local business.</small></footer>; }

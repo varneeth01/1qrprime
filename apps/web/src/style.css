@@ -902,3 +902,183 @@ body { letter-spacing: -.005em; }
 .order-timeline-item strong, .order-timeline-item small { display: block; }
 .order-timeline-item p { margin: .25rem 0 0; color: var(--muted, #6c6c6c); }
 .bill-view-modal .bill-lines { margin-bottom: .75rem; }
+
+
+/* Mobile merchant shell v6 — full-width working canvas with a touch-first bottom dock. */
+.mobile-business-select { display: none; }
+
+@media (max-width: 700px) {
+  html, body, #root { width: 100%; max-width: 100%; overflow-x: hidden; }
+  :root { --sidebar: 0px; }
+
+  .platform-shell { display: block; min-height: 100svh; padding-bottom: calc(82px + env(safe-area-inset-bottom)); }
+  .platform-shell .platform-sidebar {
+    inset: auto 0 0 0;
+    width: 100%;
+    height: calc(72px + env(safe-area-inset-bottom));
+    padding: 7px 8px calc(7px + env(safe-area-inset-bottom));
+    background: rgba(8,8,9,.96);
+    border: 0;
+    border-top: 1px solid rgba(255,255,255,.1);
+    backdrop-filter: blur(20px) saturate(150%);
+    overflow: hidden;
+  }
+  .platform-sidebar > .brand,
+  .platform-sidebar > .workspace-label,
+  .platform-sidebar > select,
+  .platform-sidebar > .sidebar-foot { display: none !important; }
+
+  .platform-sidebar nav {
+    display: flex;
+    flex-direction: row;
+    gap: 4px;
+    width: 100%;
+    height: 100%;
+    padding: 0;
+    overflow-x: auto;
+    overflow-y: hidden;
+    overscroll-behavior-x: contain;
+    scroll-snap-type: x proximity;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+  }
+  .platform-sidebar nav::-webkit-scrollbar { display: none; }
+  .platform-sidebar nav button {
+    position: relative;
+    flex: 0 0 68px;
+    min-width: 68px;
+    min-height: 56px;
+    height: 56px;
+    padding: 5px 4px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+    border-radius: 12px;
+    font-size: 9px !important;
+    line-height: 1.05;
+    text-align: center;
+    white-space: nowrap;
+    scroll-snap-align: center;
+  }
+  .platform-sidebar nav button svg { width: 19px; height: 19px; flex: none; }
+  .platform-sidebar nav button.active {
+    color: #fff;
+    background: rgba(255,255,255,.09);
+    box-shadow: inset 0 0 0 1px rgba(255,255,255,.08);
+  }
+  .platform-sidebar nav .nav-dot {
+    position: absolute;
+    top: 7px;
+    right: 14px;
+    width: 5px;
+    height: 5px;
+  }
+
+  .platform-workspace { margin-left: 0 !important; min-width: 0; width: 100%; }
+  .platform-topbar {
+    min-height: 58px;
+    padding: 8px 14px;
+    gap: 10px;
+    background: rgba(5,5,5,.92);
+  }
+  .platform-topbar > span { display: none; }
+  .topbar-context { width: 100%; justify-content: space-between; gap: 8px; }
+  .topbar-business-status { display: none; }
+  .mobile-business-select {
+    display: block;
+    min-width: 0;
+    width: min(72vw, 260px);
+    min-height: 40px;
+    height: 40px;
+    padding: 0 34px 0 12px;
+    color: var(--text);
+    background: #0c0c0e;
+    border: 1px solid var(--line-strong);
+    border-radius: 11px;
+    font-size: 14px;
+    font-weight: 600;
+  }
+
+  .platform-shell .workspace main {
+    width: 100%;
+    max-width: 100%;
+    padding: 24px 14px 38px;
+  }
+  .workspace-footer { display: none; }
+  .page-title { margin-bottom: 22px; }
+  .page-title h1 { font-size: clamp(27px, 8vw, 34px); }
+  .page-title p { font-size: 14px; }
+  .page-title .button { min-height: 46px; }
+
+  .card,
+  .business-card,
+  .portfolio-hero,
+  .welcome-banner,
+  .stat { border-radius: 16px; }
+  .card, .business-card { padding: 17px; }
+  .button-row { display: grid; grid-template-columns: 1fr; width: 100%; }
+  .button-row > .button,
+  .button-row > button { width: 100%; }
+  .two-fields,
+  .two-columns,
+  .orders-grid,
+  .admin-detail-grid,
+  .settings-layout,
+  .service-request-columns { grid-template-columns: 1fr !important; }
+
+  .field input,
+  .field select,
+  .field textarea,
+  input,
+  select,
+  textarea { font-size: 16px; }
+  .field { margin-bottom: 17px; }
+  .button, button.primary, button.secondary { min-height: 48px; }
+  .settings-nav {
+    margin: 0 -14px;
+    padding: 0 14px 8px;
+    overflow-x: auto;
+    scroll-snap-type: x proximity;
+    scrollbar-width: none;
+  }
+  .settings-nav::-webkit-scrollbar { display: none; }
+  .settings-nav button { flex: 0 0 auto; scroll-snap-align: start; }
+
+  .auth { min-height: 100svh; padding: max(18px, env(safe-area-inset-top)) 14px max(18px, env(safe-area-inset-bottom)); }
+  .auth-form,
+  .verification-card,
+  .recovery-card {
+    width: 100%;
+    max-width: 460px;
+    min-height: 0;
+    padding: 25px 19px;
+    border-radius: 20px;
+  }
+  .auth-form h2 { font-size: 29px; }
+  .auth-form footer { flex-wrap: wrap; }
+  .verification-icon, .success-mark { margin-top: 24px; }
+  .verification-card h1, .recovery-card h1 { font-size: 31px; }
+  .verification-email { font-size: 14px !important; }
+
+  .onboarding-progress {
+    grid-template-columns: repeat(6, minmax(28px,1fr));
+    gap: 3px;
+    overflow: hidden;
+    padding-bottom: 14px;
+  }
+  .setup-step small { display: none; }
+  .setup-step span { width: 26px; height: 26px; }
+  .onboarding-card > h1 { font-size: 29px; }
+
+  .customer-wrap,
+  .customer-branded { max-width: 100%; overflow-x: hidden; }
+}
+
+@media (max-width: 420px) {
+  .platform-sidebar nav button { flex-basis: 64px; min-width: 64px; }
+  .portfolio-stats, .stats { grid-template-columns: 1fr; }
+  .platform-shell .workspace main { padding-inline: 12px; }
+  .mobile-business-select { width: min(74vw, 235px); }
+}
