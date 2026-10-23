@@ -10,7 +10,7 @@ services:
       DATABASE_DRIVER: postgres
       DATABASE_PATH: /data/prime.sqlite
       MEDIA_ROOT: /data/media
-      DATABASE_URL: ${DATABASE_URL:?Set private PostgreSQL DATABASE_URL}
+      DATABASE_URL: ${POSTGRES_DATABASE_URL:?Set private PostgreSQL DATABASE_URL}
       DATABASE_SSL: ${DATABASE_SSL:-disable}
       PUBLIC_ORIGIN: ${PUBLIC_ORIGIN:-https://1qrprime.com}
       API_PUBLIC_ORIGIN: ${API_PUBLIC_ORIGIN:-https://api.1qrprime.com}
