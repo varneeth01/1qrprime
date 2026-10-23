@@ -113,7 +113,9 @@ function Meta({ path, article }: { path: string; article?: Article }) {
 
     setMeta('meta[name="description"]', "content", meta.description);
     setMeta('meta[name="robots"]', "content", "index,follow,max-image-preview:large,max-snippet:-1,max-video-preview:-1");
+    const keywordMeta = document.querySelector('meta[name="keywords"]') as HTMLMetaElement | null;
     if (meta.keywords) setMeta('meta[name="keywords"]', "content", meta.keywords);
+    else keywordMeta?.remove();
     setMeta('meta[property="og:title"]', "content", meta.title);
     setMeta('meta[property="og:description"]', "content", meta.description);
     setMeta('meta[property="og:type"]', "content", article ? "article" : "website");
