@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
-import { seoArticles } from "./seo-articles";
 import { seoLandings } from "./seo-landings";
+import { isPublicMarketingPath } from "./public-marketing-paths";
 import {
   ArrowRight, ArrowUpRight, Check, ChevronDown, ChevronRight, Menu,
   QrCode, ShoppingBag, Smartphone, Store, Wallet, Users, BarChart3,
@@ -68,7 +68,6 @@ const articles: Article[] = [
   },
 ];
 
-articles.push(...seoArticles);
 
 const marketingPages = new Set(["/", "/features", "/pricing", "/restaurants", "/cafes", "/hotels", "/blog", "/contact", "/support", "/privacy", "/terms", ...Object.keys(seoLandings)]);
 const SITE_ORIGIN = "https://1qrprime.com";
@@ -340,9 +339,16 @@ function SeoLandingPage({ path }: { path: string }) {
 function PricingPage() { return <><Meta path="/pricing" /><MarketingHeader /><main className="marketing-subpage"><section className="subpage-hero compact"><span className="marketing-eyebrow">Pricing</span><h1>One clear plan<br /><em>to start well.</em></h1><p>Prime includes the essential QR, customer and operating tools for restaurants, cafés and hotels.</p></section><section className="pricing-layout pricing-page-layout"><div className="price-card"><div className="price-top"><span>PRIME</span><b>Launch price</b></div><div className="price"><del>₹1,599</del><strong>₹599</strong><span>/ month</span></div><ul>{["Permanent dynamic QR", "Business page and menu", "Orders and table QR codes", "UPI destination management", "Analytics", "Up to 5 non-owner staff", "Support"].map(x => <li key={x}><Check size={16} />{x}</li>)}</ul><a className="marketing-button light wide" href="/signup">Continue with Prime <ArrowRight size={16} /></a><small className="price-note">Billing is handled securely through Razorpay. No payment is implied until checkout is completed.</small></div><div className="custom-card"><span className="marketing-eyebrow">Custom</span><h3>Need a different setup?</h3><p>We're onboarding other categories personally. Tell us what you are building.</p><a className="marketing-text-link" href="/contact">Talk to sales <ArrowRight size={15} /></a></div></section></main><MarketingFooter /></>; }
 
 function Blog() {
+  const [extraArticles, setExtraArticles] = useState<Article[]>([]);
+  useEffect(() => {
+    let active = true;
+    import("./seo-articles").then((module) => { if (active) setExtraArticles(module.seoArticles); });
+    return () => { active = false; };
+  }, []);
+  const allArticles = [...articles, ...extraArticles];
   return <><Meta path="/blog" /><MarketingHeader /><main className="marketing-subpage blog-page">
-    <section className="subpage-hero compact"><span className="marketing-eyebrow">The 1QR Prime journal</span><h1>Restaurant QR,<br /><em>software and operations.</em></h1><p>{articles.length} practical guides covering QR menus, restaurant software, ordering, UPI, table workflows and customer experience.</p></section>
-    <section className="article-grid">{articles.map((a, i) => <article className={i === 0 ? "featured-article" : ""} key={a.slug}><span className="marketing-eyebrow">{a.category} · {a.read}</span><h2><a href={`/blog/${a.slug}`}>{a.title}</a></h2><p>{a.description}</p><a className="marketing-text-link" href={`/blog/${a.slug}`}>Read article <ArrowRight size={15} /></a></article>)}</section>
+    <section className="subpage-hero compact"><span className="marketing-eyebrow">The 1QR Prime journal</span><h1>Restaurant QR,<br /><em>software and operations.</em></h1><p>52 practical guides covering QR menus, restaurant software, ordering, UPI, table workflows and customer experience.</p></section>
+    <section className="article-grid">{allArticles.map((a, i) => <article className={i === 0 ? "featured-article" : ""} key={a.slug}><span className="marketing-eyebrow">{a.category} · {a.read}</span><h2><a href={`/blog/${a.slug}`}>{a.title}</a></h2><p>{a.description}</p><a className="marketing-text-link" href={`/blog/${a.slug}`}>Read article <ArrowRight size={15} /></a></article>)}</section>
   </main><MarketingFooter /></>;
 }
 function GeneratedArticleBody({ article }: { article: Article }) {
@@ -369,16 +375,28 @@ function ArticlePage({ article }: { article: Article }) {
     <div className="article-next"><a href="/blog">← Back to the journal</a><a className="marketing-button light" href="/signup">Start with Prime <ArrowRight size={16} /></a></div>
   </main><MarketingFooter /></>;
 }
+function AsyncSeoArticlePage({ slug }: { slug: string }) {
+  const [article, setArticle] = useState<Article | null | undefined>(undefined);
+  useEffect(() => {
+    let active = true;
+    import("./seo-articles")
+      .then((module) => { if (active) setArticle(module.seoArticles.find((item) => item.slug === slug) || null); })
+      .catch(() => { if (active) setArticle(null); });
+    return () => { active = false; };
+  }, [slug]);
+  if (article === undefined) return <><MarketingHeader /><main className="article-page"><header><span className="marketing-eyebrow">1QR Prime Journal</span><h1>Loading guide…</h1></header></main></>;
+  return article ? <ArticlePage article={article} /> : <NotFound />;
+}
 function Contact({ support = false }: { support?: boolean }) { return <><Meta path={support ? "/support" : "/contact"} /><MarketingHeader /><main className="marketing-subpage contact-page"><section className="subpage-hero compact"><span className="marketing-eyebrow">{support ? "Support" : "Contact"}</span><h1>{support ? <>Help for the<br /><em>working day.</em></> : <>Let's make the<br /><em>next step clear.</em></>}</h1><p>{support ? "For an order, booking or payment issue, contact the business shown on its customer page. For workspace help, tell us what you are trying to do." : "Product support, a custom rollout, or a question about Prime—we'll point you in the right direction."}</p></section><section className="contact-grid"><a href="mailto:support@1qrprime.com"><span>Product support</span><b>{support ? "Get help with your workspace" : "Help with an existing workspace"} <ArrowUpRight size={16} /></b></a><a href="mailto:sales@1qrprime.com"><span>Sales</span><b>Talk about a custom business <ArrowUpRight size={16} /></b></a><a href="mailto:hello@1qrprime.com"><span>General</span><b>Say hello to the team <ArrowUpRight size={16} /></b></a></section></main><MarketingFooter /></>; }
 function Legal({ terms = false }: { terms?: boolean }) { return <><Meta path={terms ? "/terms" : "/privacy"} /><MarketingHeader /><main className="legal-page"><span className="marketing-eyebrow">1QR Prime</span><h1>{terms ? "Terms of service" : "Privacy, plainly."}</h1><p className="legal-lede">{terms ? "The rules for using 1QR Prime merchant and public business services." : "A practical summary of how account, business and operational data is handled."}</p><article>{terms ? <><h2>Using the service</h2><p>1QR Prime provides merchant workspaces, public business pages, menus, orders, QR destinations and related tools. You are responsible for information you publish and for keeping account access secure.</p><h2>Billing and third parties</h2><p>Prime billing is handled through the configured payment provider. Payment apps and other external services have their own terms. Do not use 1QR Prime to request customer PINs, passwords or sensitive credentials.</p><h2>Public pages and acceptable use</h2><p>Only publish information you have the right to share. Do not use public pages for unlawful, misleading, abusive or harmful activity. We may restrict access when necessary to protect the service or other users.</p><h2>Legal review</h2><p>This product draft requires final review for the operating entity, governing law, billing terms and support contacts before public launch.</p></> : <><h2>Information we handle</h2><p>We may handle account details, business profiles, menus, orders, enquiries, payment-route references and operational audit records needed to provide the service. Customers can use public pages without merchant accounts.</p><h2>Payments and storage</h2><p>1QR Prime does not request UPI PINs or bank passwords. Payment providers and external links process their own data. Merchant sessions use protected cookies or secure native storage. Customer carts and recovery references may remain in the local browser.</p><h2>Security and retention</h2><p>Access controls, tenant boundaries, session revocation and audit records are used to protect the service. Data retention depends on the data type and operational need; owners can request export or deletion through the workspace.</p><h2>Legal review</h2><p>This is a product policy draft. Before public launch, publish the operating entity, contact, processors, hosting region and rights process.</p></>}</article></main><MarketingFooter /></>; }
 function NotFound() { return <><Meta path="/" /><MarketingHeader /><main className="not-found"><span className="marketing-eyebrow">404</span><h1>This page<br /><em>isn't here.</em></h1><p>Try the product overview or explore the journal.</p><div className="hero-actions"><a className="marketing-button light" href="/">Go home <ArrowRight size={16} /></a><a className="marketing-text-link" href="/blog">Explore the journal <ArrowRight size={15} /></a></div></main><MarketingFooter /></>; }
 
-export function isMarketingPath(path: string) { return marketingPages.has(path) || path.startsWith("/blog/"); }
+export function isMarketingPath(path: string) { return isPublicMarketingPath(path); }
 export function MarketingRouter({ path }: { path: string }) {
   if (path === "/") return <Landing />;
   if (path === "/pricing") return <PricingPage />;
   if (path === "/blog") return <Blog />;
-  if (path.startsWith("/blog/")) { const article = articles.find(a => a.slug === path.slice("/blog/".length)); return article ? <ArticlePage article={article} /> : <NotFound />; }
+  if (path.startsWith("/blog/")) { const slug = path.slice("/blog/".length); const article = articles.find(a => a.slug === slug); return article ? <ArticlePage article={article} /> : <AsyncSeoArticlePage slug={slug} />; }
   if (path === "/contact") return <Contact />;
   if (path === "/support") return <Contact support />;
   if (path === "/privacy") return <Legal />;
