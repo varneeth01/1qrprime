@@ -405,9 +405,20 @@ export async function createApp(
           `Open ${c.PUBLIC_ORIGIN}/verify#${verificationToken} within 24 hours to verify your 1QR Prime account.`,
         );
         verificationEmailSent = true;
-      } catch {
+      } catch (error) {
         // Account creation is durable even when external mail delivery is
-        // unavailable. The verification screen can retry delivery.
+        // unavailable. Keep the account, but record a sanitized provider
+        // failure so operators can diagnose domain/SMTP configuration.
+        r.log.error(
+          {
+            event: "verification_email_delivery_failed",
+            providerCode:
+              error && typeof error === "object" && "providerCode" in error
+                ? String((error as { providerCode?: unknown }).providerCode)
+                : "UNKNOWN",
+          },
+          "Verification email delivery failed during registration",
+        );
       }
       try {
         const session = await newSession(userId, r, reply);
@@ -495,11 +506,29 @@ export async function createApp(
         await authRepository.deleteEmailTokens(tx, u.id, "verify");
         await authRepository.createEmailToken(tx, hash(token), u.id, "verify", Date.now() + 86400000);
       });
-      await sendMail(
-        u.email,
-        "Verify your 1QR Prime email",
-        `Open ${c.PUBLIC_ORIGIN}/verify#${token} within 24 hours to verify your email.`,
-      );
+      try {
+        await sendMail(
+          u.email,
+          "Verify your 1QR Prime email",
+          `Open ${c.PUBLIC_ORIGIN}/verify#${token} within 24 hours to verify your email.`,
+        );
+      } catch (error) {
+        r.log.error(
+          {
+            event: "verification_email_delivery_failed",
+            providerCode:
+              error && typeof error === "object" && "providerCode" in error
+                ? String((error as { providerCode?: unknown }).providerCode)
+                : "UNKNOWN",
+          },
+          "Verification email delivery failed",
+        );
+        fail(
+          503,
+          "Verification email delivery is temporarily unavailable. Your account is safe; try again after email service is restored.",
+          "VERIFICATION_EMAIL_FAILED",
+        );
+      }
       return { ok: true };
     },
   );
