@@ -138,17 +138,42 @@ export class PostgresDatabase implements AsyncDatabase {
 
 let sharedPool: Pool | undefined;
 
+const positiveInt = (value: string | undefined, fallback: number) => {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed > 0 ? Math.floor(parsed) : fallback;
+};
+
 export function createPostgresDatabase(connectionString = process.env.DATABASE_URL) {
   if (!connectionString) throw new Error("DATABASE_URL is required for PostgreSQL");
-  sharedPool ??= new Pool({
-    connectionString,
-    ssl: process.env.DATABASE_SSL && process.env.DATABASE_SSL !== "disable"
-      ? { rejectUnauthorized: process.env.DATABASE_SSL === "verify-full" }
-      : undefined,
-    max: Number(process.env.PG_POOL_MAX || 5),
-    idleTimeoutMillis: 10_000,
-    connectionTimeoutMillis: 10_000,
-  });
+
+  if (!sharedPool) {
+    const pool = new Pool({
+      connectionString,
+      ssl: process.env.DATABASE_SSL && process.env.DATABASE_SSL !== "disable"
+        ? { rejectUnauthorized: process.env.DATABASE_SSL === "verify-full" }
+        : undefined,
+      max: positiveInt(process.env.PG_POOL_MAX, 5),
+      idleTimeoutMillis: 10_000,
+      connectionTimeoutMillis: positiveInt(process.env.PG_CONNECT_TIMEOUT_MS, 10_000),
+      keepAlive: true,
+    });
+
+    // node-postgres emits pool-level errors for idle clients when the database
+    // or Docker network disappears. Without a listener, EventEmitter treats an
+    // "error" event as fatal and can terminate the API process.
+    pool.on("error", (error) => {
+      console.error(
+        {
+          code: (error as { code?: unknown }).code,
+          message: error.message,
+        },
+        "Unexpected PostgreSQL pool error",
+      );
+    });
+
+    sharedPool = pool;
+  }
+
   return new PostgresDatabase(sharedPool);
 }
 
