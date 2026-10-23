@@ -85,6 +85,10 @@ export class MenuRepository {
     return this.db.get("SELECT 1 FROM items WHERE id=? AND location_id=?", [id, locationId]);
   }
 
+  categoryInLocation(id: string, locationId: string) {
+    return this.db.get("SELECT 1 FROM menu_categories WHERE id=? AND location_id=?", [id, locationId]);
+  }
+
   createVariant(tx: DbExecutor, input: { id: string; itemId: string; name: string; pricePaise: number; displayOrder: number }) {
     return tx.run("INSERT INTO menu_item_variants(id,item_id,name,price_paise,display_order) VALUES (?,?,?,?,?)", [input.id, input.itemId, input.name, input.pricePaise, input.displayOrder]);
   }

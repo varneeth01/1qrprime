@@ -2,9 +2,9 @@ import Database from "better-sqlite3";
 import { Pool } from "pg";
 
 const sourcePath = process.env.SOURCE_SQLITE_PATH;
-const connectionString = process.env.DIRECT_URL;
+const connectionString = process.env.DATABASE_URL;
 if (!sourcePath) throw new Error("SOURCE_SQLITE_PATH is required");
-if (!connectionString) throw new Error("DIRECT_URL is required");
+if (!connectionString) throw new Error("DATABASE_URL is required");
 if (process.env.CONFIRM_MIGRATION !== "YES") throw new Error("Refusing migration: set CONFIRM_MIGRATION=YES");
 
 const sqlite = new Database(sourcePath, { readonly: true });

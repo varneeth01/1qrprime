@@ -367,7 +367,7 @@ test("route failover preserves existing attempt and rollback audited", async () 
     "POST",
     `/orders/${order.id}/payments`,
     undefined,
-    { idempotencyKey: key },
+    { idempotencyKey: key, customerPhone: "+919876543210" },
     { "x-order-token": order.accessToken },
   );
   assert.equal(old.status, 200);
@@ -395,7 +395,7 @@ test("route failover preserves existing attempt and rollback audited", async () 
     "POST",
     `/orders/${order.id}/payments`,
     undefined,
-    { idempotencyKey: key },
+    { idempotencyKey: key, customerPhone: "+919876543210" },
     { "x-order-token": order.accessToken },
   );
   assert.equal(retry.body.snapshot.routeId, route);
@@ -403,7 +403,7 @@ test("route failover preserves existing attempt and rollback audited", async () 
     "POST",
     `/orders/${order.id}/payments`,
     undefined,
-    { idempotencyKey: randomUUID() },
+    { idempotencyKey: randomUUID(), customerPhone: "+919876543210" },
     { "x-order-token": order.accessToken },
   );
   assert.equal(fresh.body.snapshot.routeId, backup);

@@ -5,14 +5,14 @@ export class StaffRepository {
 
   list(tenantId: string) {
     return this.db.all<any>(
-      "SELECT u.id,u.email,m.role,m.permissions,u.last_active_at FROM users u JOIN memberships m ON m.user_id=u.id WHERE m.tenant_id=? ORDER BY u.email",
+      "SELECT u.id,u.email,m.role,m.operational_role,m.permissions,u.last_active_at FROM users u JOIN memberships m ON m.user_id=u.id WHERE m.tenant_id=? ORDER BY u.email",
       [tenantId],
     );
   }
 
   listInvitations(tenantId: string) {
     return this.db.all<any>(
-      "SELECT id,email,name,role,permissions,expires_at,accepted_at,revoked_at,created_at FROM staff_invitations WHERE tenant_id=? ORDER BY created_at DESC",
+      "SELECT id,email,name,role,operational_role,permissions,expires_at,accepted_at,revoked_at,created_at FROM staff_invitations WHERE tenant_id=? ORDER BY created_at DESC",
       [tenantId],
     );
   }
@@ -26,17 +26,17 @@ export class StaffRepository {
   }
 
   membership(userId: string, tenantId: string) {
-    return this.db.get<any>("SELECT role FROM memberships WHERE user_id=? AND tenant_id=?", [userId, tenantId]);
+    return this.db.get<any>("SELECT role,operational_role,permissions FROM memberships WHERE user_id=? AND tenant_id=?", [userId, tenantId]);
   }
 
   countNonOwners(tenantId: string) {
     return this.db.get<{ n: number }>("SELECT count(*) n FROM memberships WHERE tenant_id=? AND role!='owner'", [tenantId]);
   }
 
-  upsert(tx: DbTransaction, userId: string, tenantId: string, role: "manager" | "staff", permissions = "{}") {
+  upsert(tx: DbTransaction, userId: string, tenantId: string, role: "manager" | "staff", operationalRole = "service", permissions = "{}") {
     return tx.run(
-      "INSERT INTO memberships(user_id,tenant_id,role,permissions) VALUES (?,?,?,?) ON CONFLICT(user_id,tenant_id) DO UPDATE SET role=excluded.role,permissions=excluded.permissions",
-      [userId, tenantId, role, permissions],
+      "INSERT INTO memberships(user_id,tenant_id,role,operational_role,permissions) VALUES (?,?,?,?,?) ON CONFLICT(user_id,tenant_id) DO UPDATE SET role=excluded.role,operational_role=excluded.operational_role,permissions=excluded.permissions",
+      [userId, tenantId, role, operationalRole, permissions],
     );
   }
 

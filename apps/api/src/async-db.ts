@@ -1,5 +1,4 @@
 import { Pool, type PoolClient, type QueryResultRow } from "pg";
-import { attachDatabasePool } from "@vercel/functions";
 
 export type DbResult<T extends QueryResultRow = QueryResultRow> = {
   rows: T[];
@@ -14,6 +13,7 @@ export interface DbTransaction {
 }
 
 export interface AsyncDatabase extends DbTransaction {
+  readonly driver?: "sqlite" | "postgres";
   transaction<T>(work: (tx: DbTransaction) => Promise<T>): Promise<T>;
   close(): Promise<void>;
 }
@@ -39,6 +39,7 @@ export function createSqliteDatabase(raw: any): AsyncDatabase {
     },
   };
   return {
+    driver: "sqlite",
     ...tx,
     async transaction(work) {
       raw.exec("BEGIN");
@@ -90,6 +91,7 @@ class PostgresTransaction implements DbTransaction {
 }
 
 export class PostgresDatabase implements AsyncDatabase {
+  readonly driver = "postgres" as const;
   constructor(readonly pool: Pool) {}
 
   query<T extends QueryResultRow = QueryResultRow>(sql: string, params: unknown[] = []) {
@@ -140,13 +142,13 @@ export function createPostgresDatabase(connectionString = process.env.DATABASE_U
   if (!connectionString) throw new Error("DATABASE_URL is required for PostgreSQL");
   sharedPool ??= new Pool({
     connectionString,
+    ssl: process.env.DATABASE_SSL && process.env.DATABASE_SSL !== "disable"
+      ? { rejectUnauthorized: process.env.DATABASE_SSL === "verify-full" }
+      : undefined,
     max: Number(process.env.PG_POOL_MAX || 5),
     idleTimeoutMillis: 10_000,
     connectionTimeoutMillis: 10_000,
   });
-  // Only attach lifecycle hooks inside Vercel. A long-running VPS process keeps
-  // the PostgreSQL pool alive normally.
-  if (process.env.VERCEL) attachDatabasePool(sharedPool);
   return new PostgresDatabase(sharedPool);
 }
 

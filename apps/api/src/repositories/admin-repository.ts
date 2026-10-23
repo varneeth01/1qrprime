@@ -101,6 +101,24 @@ export class AdminRepository {
     );
   }
 
+  marketingOverview() {
+    return Promise.all([
+      this.db.get<any>("SELECT count(*) AS customers FROM customers"),
+      this.db.get<any>("SELECT count(*) AS subscribers FROM customer_consents WHERE channel='whatsapp' AND purpose='marketing' AND status='opted_in'"),
+      this.db.get<any>("SELECT count(*) AS campaigns FROM campaigns"),
+      this.db.get<any>("SELECT count(*) AS queued FROM campaign_recipients WHERE status='queued'"),
+      this.db.all<any>("SELECT provider,status,count(*) AS count FROM marketing_connections GROUP BY provider,status ORDER BY provider,status"),
+      this.db.all<any>("SELECT status,count(*) AS count FROM campaigns GROUP BY status ORDER BY status"),
+    ]).then(([customers, subscribers, campaigns, queued, connections, campaignStatuses]) => ({
+      customers: Number(customers?.customers || 0),
+      subscribers: Number(subscribers?.subscribers || 0),
+      campaigns: Number(campaigns?.campaigns || 0),
+      queuedRecipients: Number(queued?.queued || 0),
+      connections,
+      campaignStatuses,
+    }));
+  }
+
   salesLead(id: string) {
     return this.db.get<any>("SELECT * FROM sales_leads WHERE id=?", [id]);
   }

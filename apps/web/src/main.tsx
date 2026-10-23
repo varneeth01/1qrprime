@@ -39,12 +39,18 @@ import {
   Table2,
   Palette,
   Pencil,
+  MailCheck,
+  Megaphone,
+  Gift,
+  Tag,
 } from "lucide-react";
 import { api, ApiError, updateLocation, money, label, type Any } from "./api";
 import { emailFormatError, normalizeSlugSuggestion, passwordFormatError, slugFormatError } from "./validation";
 import { SLUG_AVAILABILITY_PATH } from "../../../shared/slug";
+import { normalizeCustomerPhone } from "../../../shared/customer-phone";
 import { canRenderMerchantNavigation, resolveProductState } from "../../../shared/product-state";
 import { isMarketingPath, MarketingRouter } from "./marketing";
+import { MarketingWorkspace } from "./marketing-workspace";
 import "./style.css";
 import "./marketing.css";
 function ErrorBox({ error }: { error: string }) {
@@ -65,12 +71,39 @@ function Field({ title, error = "", success = "", description = "", ...props }: 
     </label>
   );
 }
+function MediaUploader({ locationId, value, onChange, title }: { locationId: string; value?: string | null; onChange: (url: string | null) => void; title: string }) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  async function upload(file?: File) {
+    if (!file) return;
+    if (!/^image\/(jpeg|png|webp)$/i.test(file.type)) { setError("Use a JPG, PNG or WebP image."); return; }
+    if (file.size > 5 * 1024 * 1024) { setError("Keep images under 5 MB."); return; }
+    setBusy(true); setError("");
+    try {
+      const body = new FormData(); body.append("file", file);
+      const response = await fetch(`/api/locations/${locationId}/upload`, { method: "POST", body, credentials: "include" });
+      const result = await response.json();
+      if (!response.ok) throw Error(result.error || "Image upload failed");
+      onChange(result.url);
+    } catch (e) { setError((e as Error).message); } finally { setBusy(false); }
+  }
+  return <div className="media-uploader">
+    <span className="field-label">{title}</span>
+    {value ? <div className="media-preview"><img src={value} alt="" /><div><strong>{busy ? "Uploading…" : "Image ready"}</strong><small>Replace it any time.</small></div><label className="text-button media-replace"><input type="file" accept="image/jpeg,image/png,image/webp" onChange={(event) => void upload(event.target.files?.[0])} />Replace</label><button type="button" className="text-button" onClick={() => onChange(null)}>Remove</button></div> : <label className="media-dropzone" onDragOver={(event) => event.preventDefault()} onDrop={(event) => { event.preventDefault(); void upload(event.dataTransfer.files?.[0]); }}><input type="file" accept="image/jpeg,image/png,image/webp" onChange={(event) => void upload(event.target.files?.[0])} /><strong>{busy ? "Uploading…" : "Add an image"}</strong><small>Drop here or browse · JPG, PNG or WebP · 5 MB max</small></label>}
+    {error && <small className="field-message error-text" role="alert">{error}</small>}
+  </div>;
+}
 function Badge({ children, tone = "" }: any) {
   return <span className={`badge ${tone}`}>{children}</span>;
 }
 const browserOrigin = window.location.origin;
 const localOrigin = /^(localhost|127\.0\.0\.1|0\.0\.0\.0)$/i.test(window.location.hostname);
 const temporaryPreviewOrigin = /\.trycloudflare\.com$/i.test(window.location.hostname);
+function formatDate(value: unknown) {
+  const raw = String(value || "");
+  const parsed = new Date(/(?:Z|[+-]\d{2}:?\d{2})$/i.test(raw) ? raw : `${raw}Z`);
+  return Number.isNaN(parsed.getTime()) ? "Date unavailable" : parsed.toLocaleString("en-IN");
+}
 let razorpayLoader: Promise<void> | null = null;
 function loadRazorpayCheckout() {
   if ((window as any).Razorpay) return Promise.resolve();
@@ -143,36 +176,9 @@ function Auth({ done, initialRegister = false }: { done: () => Promise<boolean> 
   }
   return (
     <div className="auth auth-v2">
-      <section className="auth-story auth-hero">
+      <section className="auth-form auth-card auth-panel">
         <Brand />
-        <div>
-          <Badge>BUILT FOR LOCAL BUSINESS</Badge>
-          <h1>
-            Your business.
-            <br />
-            One connected
-            <br />
-            <i>experience.</i>
-          </h1>
-          <p>
-            A welcoming page for your customers. A calmer working day for you.
-          </p>
-          <div className="auth-features">
-            <span>
-              <Check /> Your own business QR
-            </span>
-            <span>
-              <Check /> Menus, orders & payment routes
-            </span>
-            <span>
-              <Check /> No customer app needed
-            </span>
-          </div>
-        </div>
-        <small>1QR Prime · Made for merchants in India</small>
-      </section>
-      <section className="auth-form auth-card">
-        <Brand />
+        <div className="auth-kicker">{register ? "GET STARTED" : "MERCHANT LOGIN"}</div>
         <h2>{register ? "Create your account" : "Welcome back"}</h2>
         <p>
           {register
@@ -259,24 +265,73 @@ function RouteRedirect({ to }: { to: string }) {
   useEffect(() => {
     window.location.replace(to);
   }, [to]);
-  return <div className="boot-screen"><Brand /><Skeleton className="boot-line" /><p>Opening your workspace</p></div>;
+  return <div className="boot-screen"><Brand /><Skeleton className="boot-line" /><p>Opening your business</p></div>;
 }
-function VerificationRequired({ email, onSignOut }: { email: string; onSignOut: () => Promise<void> }) {
+function VerificationRequired({ email, onSwitchAccount, refresh }: { email: string; onSwitchAccount: () => Promise<void>; refresh: () => Promise<boolean> }) {
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
-  return <div className="auth auth-v2"><section className="auth-form auth-card"><Brand /><Badge>EMAIL VERIFICATION</Badge><h2>Verify your email</h2><p>We sent a verification link to:</p><strong className="verification-email">{email}</strong><ErrorBox error={error} />{message && <div className="auth-success" role="status">{message}</div>}<button className="primary wide" disabled={busy} onClick={async () => { setBusy(true); setError(""); setMessage(""); try { await api("/auth/request-verification", "POST"); setMessage("Verification email sent. Check your inbox and spam folder."); } catch (e) { setError((e as Error).message); } finally { setBusy(false); } }}>{busy ? "Sending…" : "Resend verification email"}</button><button className="secondary wide" onClick={() => { window.location.href = "/login"; }}>Sign in instead</button><button className="text-button" onClick={onSignOut}>Sign out</button></section></div>;
+  useEffect(() => {
+    const checkVerification = () => {
+      if (document.visibilityState !== "hidden") void refresh();
+    };
+    window.addEventListener("focus", checkVerification);
+    document.addEventListener("visibilitychange", checkVerification);
+    return () => {
+      window.removeEventListener("focus", checkVerification);
+      document.removeEventListener("visibilitychange", checkVerification);
+    };
+  }, [refresh]);
+  async function resend() {
+    setBusy(true);
+    setError("");
+    setMessage("");
+    try {
+      await api("/auth/request-verification", "POST");
+      setMessage("Verification email sent. Check your inbox and spam folder.");
+    } catch (e) {
+      if (e instanceof ApiError) {
+        if (e.code === "RATE_LIMITED") {
+          const seconds = Number(e.data?.retryAfterSeconds || 60);
+          setError(`You can resend the email in ${seconds} seconds.`);
+        } else if (e.code === "NETWORK_ERROR") {
+          setError("We couldn't reach 1QR Prime. Check your connection.");
+        } else if (e.code === "VERIFICATION_EMAIL_FAILED") {
+          setError("We couldn't send the verification email. Try again shortly.");
+        } else if (e.status >= 500) {
+          setError("We couldn't resend the email right now. Try again shortly.");
+        } else {
+          setError(e.message);
+        }
+      } else {
+        setError("We couldn't resend the email right now. Try again shortly.");
+      }
+    } finally {
+      setBusy(false);
+    }
+  }
+  async function switchAccount() {
+    setBusy(true);
+    setError("");
+    try {
+      await onSwitchAccount();
+    } catch {
+      setError("We couldn't switch accounts right now. Try again.");
+      setBusy(false);
+    }
+  }
+  return <div className="auth verification-shell"><section className="auth-form auth-card verification-card"><Brand /><div className="verification-icon" aria-hidden="true"><MailCheck size={22} /></div><div className="auth-kicker">ONE LAST STEP</div><h1>Verify your email</h1><p>We sent a verification link to</p><strong className="verification-email">{email}</strong><p className="verification-copy">Check your inbox and click the link to continue setting up your business.</p><ErrorBox error={error} />{message && <div className="auth-success" role="status">{message}</div>}<div className="verification-actions"><button className="primary wide" disabled={busy} onClick={resend}>{busy ? "Sending…" : message ? "Email sent" : "Resend verification email"}</button><button className="secondary wide" disabled={busy} onClick={switchAccount}>Use a different account</button></div><p className="verification-help">Didn't receive it? Check your spam folder or resend the email.</p></section></div>;
 }
 function StaffInvite({ token }: { token: string }) {
   const [invite, setInvite] = useState<Any | null>(null), [password, setPassword] = useState(""), [error, setError] = useState(""), [accepted, setAccepted] = useState(false), [busy, setBusy] = useState(false);
   useEffect(() => { api(`/staff/invitations/${token}`).then(setInvite).catch((e) => setError((e as Error).message)); }, [token]);
-  if (accepted) return <div className="auth"><section className="auth-form"><Brand /><Badge tone="green">INVITATION ACCEPTED</Badge><h2>You’re part of the team</h2><p>Sign in to open your new business workspace.</p><a className="button primary wide" href="/">Open workspace <ArrowUpRight size={17} /></a></section></div>;
+  if (accepted) return <div className="auth"><section className="auth-form auth-panel"><Brand /><Badge tone="green">INVITATION ACCEPTED</Badge><h2>You’re part of the team</h2><p>Sign in to open your new business.</p><a className="button primary wide" href="/">Open business <ArrowUpRight size={17} /></a></section></div>;
   return <div className="auth"><section className="auth-form"><Brand /><Badge>STAFF INVITATION</Badge><h2>Join 1QR Prime</h2>{invite ? <><p>{invite.name}, you’ve been invited as <strong>{invite.role}</strong>.</p><p className="muted">{invite.email}</p><ErrorBox error={error} /><form onSubmit={async (e) => { e.preventDefault(); setBusy(true); setError(""); try { await api(`/staff/invitations/${token}/accept`, "POST", { password, name: invite.name }); setAccepted(true); } catch (e) { setError((e as Error).message); } finally { setBusy(false); } }}><Field title="Create your password" name="password" type="password" minLength={12} required value={password} onChange={(e: any) => setPassword(e.target.value)} autoComplete="new-password" /><small>Use at least 12 characters. This invitation expires soon and can only be used once.</small><button className="primary wide" disabled={busy}>{busy ? "Accepting…" : "Accept invitation"} <Check size={17} /></button></form></> : <><ErrorBox error={error} />{!error && <><Skeleton className="boot-line" /><p>Checking invitation…</p></>}</>}</section></div>;
 }
 function PaymentRouteConfirmation({ token }: { token: string }) {
   const [approval, setApproval] = useState<Any | null>(null), [error, setError] = useState(""), [confirmed, setConfirmed] = useState(false), [busy, setBusy] = useState(false);
   useEffect(() => { api(`/payment-routes/confirm/${token}`).then(setApproval).catch((e) => setError((e as Error).message)); }, [token]);
-  return <div className="auth"><section className="auth-form"><Brand /><Badge tone={confirmed ? "green" : ""}>{confirmed ? "CONFIRMED" : "PAYMENT DESTINATION"}</Badge>{confirmed ? <><h2>Payment destination confirmed</h2><p>Owner approval is recorded. Independent verification is still required before this destination can become active.</p><a className="button primary wide" href="/">Return to workspace</a></> : approval ? <><h2>Confirm this destination?</h2><p>{approval.business}</p><div className="card-soft"><strong>{approval.vpa}</strong><small>{approval.payee}</small></div><ErrorBox error={error} /><button className="primary wide" disabled={busy} onClick={async () => { setBusy(true); setError(""); try { await api(`/payment-routes/confirm/${token}`, "POST"); setConfirmed(true); } catch (e) { setError((e as Error).message); } finally { setBusy(false); } }}>{busy ? "Confirming…" : "Confirm payment destination"} <Check size={17} /></button><p className="muted">If you did not request this change, do not approve it.</p></> : <><ErrorBox error={error} />{!error && <><Skeleton className="boot-line" /><p>Checking confirmation link…</p></>}</>}</section></div>;
+  return <div className="auth"><section className="auth-form auth-panel"><Brand /><Badge tone={confirmed ? "green" : ""}>{confirmed ? "CONFIRMED" : "PAYMENT DESTINATION"}</Badge>{confirmed ? <><h2>Payment destination confirmed</h2><p>Owner approval is recorded. Independent verification is still required before this destination can become active.</p><a className="button primary wide" href="/">Return to business</a></> : approval ? <><h2>Confirm this destination?</h2><p>{approval.business}</p><div className="card-soft"><strong>{approval.vpa}</strong><small>{approval.payee}</small></div><ErrorBox error={error} /><button className="primary wide" disabled={busy} onClick={async () => { setBusy(true); setError(""); try { await api(`/payment-routes/confirm/${token}`, "POST"); setConfirmed(true); } catch (e) { setError((e as Error).message); } finally { setBusy(false); } }}>{busy ? "Confirming…" : "Confirm payment destination"} <Check size={17} /></button><p className="muted">If you did not request this change, do not approve it.</p></> : <><ErrorBox error={error} />{!error && <><Skeleton className="boot-line" /><p>Checking confirmation link…</p></>}</>}</section></div>;
 }
 function SalesPending({ name, category, email, phone, city, onEdit, onSignOut }: any) {
   return <div className="sales-pending-shell">
@@ -299,15 +354,16 @@ function SalesPending({ name, category, email, phone, city, onEdit, onSignOut }:
   </div>;
 }
 const nav = [
-  ["portfolio", "Portfolio", LayoutDashboard],
   ["overview", "Overview", Store],
   ["orders", "Orders", ShoppingBag],
+  ["service", "Service requests", Bell],
   ["menu", "Menu", MenuIcon],
   ["tables", "Tables", Table2],
   ["payments", "Payments", Wallet],
   ["qr", "QR Codes", QrCode],
   ["customer", "Customer page", Palette],
   ["analytics", "Analytics", BarChart3],
+  ["marketing", "Marketing", Megaphone],
   ["staff", "Staff", Users],
   ["profile", "Business profile", Store],
   ["settings", "Settings", Settings],
@@ -315,7 +371,7 @@ const nav = [
 function App() {
   const [me, setMe] = useState<Any | null>(null),
     [loading, setLoading] = useState(true),
-    [section, setSection] = useState("portfolio"),
+    [section, setSection] = useState("overview"),
     [lid, setLid] = useState(""),
     [error, setError] = useState(""),
     [salesEditing, setSalesEditing] = useState(false);
@@ -330,7 +386,7 @@ function App() {
       );
       // A newly registered or legacy account without a business should enter
       // the business setup flow directly, matching the native experience.
-      if (!m.locations.length && !m.adminRole) setSection((current) => current === "portfolio" ? "new" : current);
+      if (!m.locations.length && !m.adminRole) setSection((current) => current === "overview" ? "new" : current);
       return true;
     } catch {
       setMe(null);
@@ -342,10 +398,17 @@ function App() {
   useEffect(() => {
     void refresh();
   }, [refresh]);
+  useEffect(() => {
+    if (!me || me.adminRole) return;
+    if (me.locations?.length) {
+      setLid((current) => current || me.locations[0].id);
+      setSection((current) => current === "admin" ? "overview" : current);
+    }
+  }, [me?.id, me?.adminRole, me?.locations?.length]);
   const pathname = window.location.pathname;
   if (isMarketingPath(pathname)) return <MarketingRouter path={pathname} />;
   if (pathname === "/login" || pathname === "/signup") {
-    if (loading) return <div className="boot-screen"><Brand /><Skeleton className="boot-line" /><p>Preparing your workspace</p></div>;
+    if (loading) return <div className="boot-screen"><Brand /><Skeleton className="boot-line" /><p>Preparing your business</p></div>;
     if (!me) return <Auth done={refresh} initialRegister={pathname === "/signup"} />;
     return <RouteRedirect to="/app" />;
   }
@@ -358,10 +421,11 @@ function App() {
   if (pathname.startsWith("/b/") || pathname.startsWith("/q/")) {
     const parts = pathname.split("/").filter(Boolean);
     const legacy = parts[0] === "b";
+    if (parts[2] === "promotion" && parts[3]) return <CustomerPromotion slug={decodeURIComponent(parts[1])} promotionId={decodeURIComponent(parts[3])} />;
     const initialView = legacy ? "menu" : parts[2] === "menu" ? "menu" : parts[2] === "pay" ? "pay" : "hub";
     return <Customer slug={decodeURIComponent(parts[1])} initialView={initialView} />;
   }
-  if (loading) return <div className="boot-screen"><Brand /><Skeleton className="boot-line" /><p>Preparing your workspace</p></div>;
+  if (loading) return <div className="boot-screen"><Brand /><Skeleton className="boot-line" /><p>Preparing your business</p></div>;
   if (!me) return <Auth done={refresh} />;
   const l = me.locations.find((x: Any) => x.id === lid),
     tenant =
@@ -374,14 +438,14 @@ function App() {
   if (!canRenderMerchantNavigation(productState) && !me.adminRole)
     return (
       <div className="auth auth-v2">
-        {verificationRequired ? <VerificationRequired email={me.email} onSignOut={async () => { await api("/auth/logout", "POST"); window.location.replace("/login"); }} /> : needsOnboarding ? <section className="auth-form auth-card"><Brand /><NewLocation me={me} initial={l} done={refresh} /></section> : paymentRequired ? <section className="auth-form auth-card"><Brand /><NewLocation me={me} initial={l} forcePayment done={refresh} /></section> : salesEditing ? <section className="auth-form auth-card"><Brand /><NewLocation me={me} initial={l} startAt={0} done={async () => { setSalesEditing(false); await refresh(); }} onSalesSubmitted={async () => { setSalesEditing(false); await refresh(); }} /></section> : <SalesPending name={l?.name} category={l?.category} email={me.email} phone={l?.profile?.phone} city={l?.profile?.city || l?.profile?.address} onEdit={() => setSalesEditing(true)} onSignOut={async () => { await api("/auth/logout", "POST"); window.location.replace("/login"); }} />}
+        {verificationRequired ? <VerificationRequired email={me.email} refresh={refresh} onSwitchAccount={async () => { await api("/auth/logout", "POST"); await refresh(); window.location.replace("/login"); }} /> : needsOnboarding ? <div className="setup-shell"><NewLocation me={me} initial={l} done={refresh} /></div> : paymentRequired ? <div className="setup-shell"><NewLocation me={me} initial={l} forcePayment done={refresh} /></div> : salesEditing ? <div className="setup-shell"><NewLocation me={me} initial={l} startAt={0} done={async () => { setSalesEditing(false); await refresh(); }} onSalesSubmitted={async () => { setSalesEditing(false); await refresh(); }} /></div> : <SalesPending name={l?.name} category={l?.category} email={me.email} phone={l?.profile?.phone} city={l?.profile?.city || l?.profile?.address} onEdit={() => setSalesEditing(true)} onSignOut={async () => { await api("/auth/logout", "POST"); window.location.replace("/login"); }} />}
       </div>
     );
   return (
     <div className="shell platform-shell">
       <aside className="sidebar platform-sidebar">
         <Brand />
-        <div className="workspace-label">WORKSPACE</div>
+        <div className="workspace-label">BUSINESS</div>
         <select
           aria-label="Active business"
           value={lid || "all"}
@@ -391,21 +455,22 @@ function App() {
             if (next === "all") setSection("portfolio");
           }}
         >
-          <option value="all">All businesses</option>
+          {me.locations.length > 1 && <option value="all">All businesses</option>}
           {me.locations.map((x: Any) => (
             <option key={x.id} value={x.id}>
               {x.name}
             </option>
           ))}
         </select>
-        <nav aria-label="Merchant workspace">
+        <nav aria-label="Business navigation">
+          {me.locations.length > 1 && <button className={section === "portfolio" ? "active" : ""} onClick={() => setSection("portfolio")}><LayoutDashboard size={19} />Portfolio</button>}
           {nav
             .filter(
               ([key]) =>
                 !(
                   l?.role === "staff" &&
                   ["payments", "staff", "analytics"].includes(key)
-                ),
+                ) && !(key === "service" && l?.role === "staff" && l?.operational_role !== "service") && !(l?.role === "staff" && key === "marketing"),
             )
             .map(([key, title, Icon]) => (
               <button
@@ -436,7 +501,7 @@ function App() {
           <span className="avatar">{me.email[0].toUpperCase()}</span>
           <div>
             <strong>{tenant?.name}</strong>
-            <small>{label(l?.role || "owner")} workspace</small>
+            <small>{label(l?.role || "owner")} access</small>
           </div>
           <button
             aria-label="Sign out"
@@ -452,13 +517,13 @@ function App() {
       <div className="workspace platform-workspace">
         <header className="topbar platform-topbar">
           <span>
-            Workspace <ChevronRight size={14} />{" "}
+            {tenant?.name || "Business"} <ChevronRight size={14} />{" "}
             <strong>
               {nav.find((x) => x[0] === section)?.[1] || "Support"}
             </strong>
           </span>
           <div className="topbar-context">
-            <span className="topbar-business-status">{tenant?.name || "Workspace"}</span>
+            <span className="topbar-business-status">{tenant?.name || "Business"}</span>
             {l?.published && <Badge tone="green">Live</Badge>}
           </div>
         </header>
@@ -467,8 +532,8 @@ function App() {
           {section === "admin" ? (
             <Admin />
           ) : section === "new" ? (
-            <NewLocation me={me} done={async () => { await refresh(); setSection("portfolio"); }} />
-          ) : section === "portfolio" || !lid ? (
+            <NewLocation me={me} done={async () => { await refresh(); setSection("overview"); }} />
+          ) : section === "portfolio" || (!lid && me.locations.length > 1) ? (
             <Portfolio me={me} go={(next: string, locationId?: string) => { if (locationId) setLid(locationId); setSection(next); }} />
           ) : !l ? (
             <NewLocation
@@ -496,13 +561,13 @@ function App() {
                   </div>
                   <h1>
                     {section === "overview"
-                      ? `Good to see you, ${l.name}.`
+                      ? `Good evening, ${l.name}`
                       : nav.find((x) => x[0] === section)?.[1]}
                   </h1>
                   <p>
                     {section === "overview"
-                      ? "A clear view of today’s work, customer activity and what needs attention."
-                      : `Manage ${l.name} with confidence.`}
+                      ? "Your orders, menu and customer experience at a glance."
+                      : `Manage ${l.name} with clarity.`}
                   </p>
                 </div>
                 <a
@@ -521,14 +586,17 @@ function App() {
               {section === "menu" && <Catalogue l={l} done={refresh} />}{" "}
               {section === "tables" && <Tables l={l} />}{" "}
               {section === "orders" && <Orders l={l} />}{" "}
+              {section === "service" && <ServiceRequests l={l} />}{" "}
               {section === "payments" && <Payments l={l} emailVerified={!!me.emailVerified} />}{" "}
               {section === "qr" && <QrStudio l={l} />}{" "}
               {section === "customer" && <CustomerDesigner l={l} done={refresh} />}{" "}
-              {section === "analytics" && <Analytics l={l} />}{" "}
+              {section === "analytics" && <Analytics l={l} />} {" "}
+              {section === "marketing" && <MarketingWorkspace l={l} />} {" "}
               {section === "staff" && <Staff l={l} />}{" "}
               {section === "settings" && (
                 <SettingsPage
                   tenant={tenant}
+                  l={l}
                   go={setSection}
                   refresh={refresh}
                 />
@@ -560,7 +628,7 @@ function Portfolio({ me, go }: any) {
   const revenue = orders.filter((order: Any) => order.state === "completed").reduce((sum: number, order: Any) => sum + (order.amount_paise || 0), 0);
   return <>
     <div className="portfolio-hero">
-      <div><Badge>OWNER COMMAND CENTER</Badge><h1>Your businesses, together.</h1><p>Run every location from one calm workspace. Pick a business when you need operational detail.</p></div>
+      <div><span className="eyebrow">PORTFOLIO</span><h1>Your businesses</h1><p>Manage your locations and switch between them.</p></div>
       <button className="primary" onClick={() => go("new")}> <Plus size={17} /> Add business</button>
     </div>
     <ErrorBox error={error} />
@@ -600,36 +668,9 @@ function Overview({ l, go }: any) {
   return (
     <>
       <ErrorBox error={error} />
-      <div className="welcome-banner">
-        <div>
-          <Badge>ONE QR. MORE POSSIBILITIES.</Badge>
-          <h2>
-            Make every visit
-            <br />
-            the start of something.
-          </h2>
-          <p>
-            Your menu, your links, your business.
-            <br />A single page that brings it all together.
-          </p>
-          <button className="button light" onClick={() => go("qr")}>
-            Get your business QR <ArrowUpRight size={16} />
-          </button>
-        </div>
-        <div className="mini-page">
-          <div className="mini-avatar">{l.name.slice(0, 1)}</div>
-          <strong>{l.name}</strong>
-          <small>Your neighbourhood favourite</small>
-          <div>
-            <span>Explore our menu</span>
-            <ArrowUpRight size={16} />
-          </div>
-          <div>
-            <span>Visit · Connect · Pay</span>
-            <QrCode size={16} />
-          </div>
-          <small className="powered">Connected by 1QR Prime</small>
-        </div>
+      <div className="overview-intro">
+        <div><span className="eyebrow">TODAY</span><h2>Keep service moving.</h2><p>See what needs attention, then jump straight into the work.</p></div>
+        <button className="button primary" onClick={() => go("orders")}>Open order desk <ArrowUpRight size={16} /></button>
       </div>
       <div className="stats">
         <Stat
@@ -638,17 +679,17 @@ function Overview({ l, go }: any) {
           note="Waiting, accepted or preparing"
         />
         <Stat
-          title="Catalogue items"
+          title="Menu items"
           value={l.items.length}
           note={`${l.items.filter((x: Any) => x.available).length} currently available`}
         />
         <Stat
-          title="Business page"
+          title="Customer page"
           value={l.published ? "Live" : "Draft"}
           note="Your printed URL stays the same"
         />
         <Stat
-          title="Payment route"
+          title="Payments"
           value={l.active_route_id ? "Active" : "Set up"}
           note="Manual, verified destinations"
         />
@@ -656,26 +697,26 @@ function Overview({ l, go }: any) {
       <div className="two-columns">
         <section className="card">
           <div className="card-heading">
-            <h2>Make it yours</h2>
-            <Badge>GET STARTED</Badge>
+            <div><span className="eyebrow">NEEDS ATTENTION</span><h2>Finish the essentials</h2></div>
+            <span className="muted">{[!l.profile?.description, !l.items?.length, !l.active_route_id, !l.published].filter(Boolean).length} left</span>
           </div>
           {[
             [
               "profile",
-              "Add your business details",
-              "Help customers get to know you.",
+              "Complete your business profile",
+              "Give customers the details they need.",
             ],
             [
               "menu",
-              "Build your menu or catalogue",
-              "Put your best offerings up front.",
+              "Add your first menu item",
+              "Start a menu customers can browse.",
             ],
             [
               "payments",
-              "Connect a payment destination",
-              "Verify a route before accepting UPI.",
+              "Connect payments",
+              "Add a verified destination for UPI.",
             ],
-            ["qr", "Print your business QR", "Turn a visit into a connection."],
+            ["qr", "Download your QR", "Your permanent link is ready to share."],
           ].map(([s, t, d], i) => (
             <button className="step" key={s} onClick={() => go(s)}>
               <span className="step-number">0{i + 1}</span>
@@ -689,7 +730,7 @@ function Overview({ l, go }: any) {
         </section>
         <section className="card">
           <div className="card-heading">
-            <h2>At the counter</h2>
+            <div><span className="eyebrow">ORDERS</span><h2>Recent activity</h2></div>
             <button className="text-button" onClick={() => go("orders")}>
               Open order desk ↗
             </button>
@@ -707,9 +748,8 @@ function Overview({ l, go }: any) {
               </div>
             ))
           ) : (
-            <Empty title="A little quiet, for now">
-              Incoming orders will appear here. Keep the order desk open during
-              service.
+            <Empty title="No orders yet">
+              Orders from your customer page will appear here.
             </Empty>
           )}
         </section>
@@ -736,8 +776,12 @@ function Stat({ title, value, note }: any) {
   );
 }
 function NewLocation({ me, done, initial, forcePayment = false, startAt, onSalesSubmitted }: any) {
+  const persistedStep = startAt ?? initial?.onboarding?.step ?? 0;
+  // Older drafts used step 4 for plan selection and step 5 for the preview.
+  // Keep those drafts resumable after the menu step was removed from onboarding.
+  const resumeStep = forcePayment ? 3 : persistedStep >= 5 ? 4 : Math.min(3, persistedStep);
   const [draft, setDraft] = useState<Any | null>(initial || null),
-    [step, setStep] = useState(forcePayment ? 4 : (startAt ?? initial?.onboarding?.step ?? 0)),
+    [step, setStep] = useState(resumeStep),
     [name, setName] = useState(initial?.name || ""),
     [slug, setSlug] = useState(initial?.slug || ""),
     [slugTouched, setSlugTouched] = useState(!!initial?.slug),
@@ -752,8 +796,6 @@ function NewLocation({ me, done, initial, forcePayment = false, startAt, onSales
     [hours, setHours] = useState(initial?.profile?.hours || ""),
     [tax, setTax] = useState(String((initial?.profile?.taxBps || 0) / 100)),
     [packaging, setPackaging] = useState(String((initial?.profile?.packagingFeePaise || 0) / 100)),
-    [itemName, setItemName] = useState(""),
-    [itemPrice, setItemPrice] = useState(""),
     [plans, setPlans] = useState<Any[]>([]),
     [planId, setPlanId] = useState(initial?.plan_id || "prime"),
     [salesSubmitted, setSalesSubmitted] = useState(false),
@@ -824,15 +866,6 @@ function NewLocation({ me, done, initial, forcePayment = false, startAt, onSales
     } catch (e) { setError((e as Error).message); return null; }
     finally { setBusy(false); }
   }
-  async function addItem() {
-    if (!draft || !itemName || !itemPrice) return;
-    setBusy(true); setError("");
-    try {
-      await api(`/locations/${draft.id}/items`, "POST", { name: itemName, description: "", section: "Menu", price_paise: Math.round(Number(itemPrice) * 100), available: true, foodType: "OTHER" });
-      setItemName(""); setItemPrice("");
-      const updated = await api(`/locations/${draft.id}`); setDraft(updated);
-    } catch (e) { setError((e as Error).message); } finally { setBusy(false); }
-  }
   async function publish() {
     if (!primeEligible) {
       setBusy(true); setError("");
@@ -873,7 +906,7 @@ function NewLocation({ me, done, initial, forcePayment = false, startAt, onSales
           handler: async (response: Any) => {
             try {
               await api("/billing/checkout/verify", "POST", { razorpayPaymentId: response.razorpay_payment_id, razorpayOrderId: response.razorpay_order_id, razorpaySignature: response.razorpay_signature });
-              setPaymentVerified(true); setStep(5);
+              setPaymentVerified(true); setStep(4);
             } catch { setError("We couldn't verify this payment yet. If money was deducted, contact support and we'll check it."); }
             finally { finish(); }
           },
@@ -887,20 +920,20 @@ function NewLocation({ me, done, initial, forcePayment = false, startAt, onSales
     } finally { setBusy(false); }
   }
   if (salesSubmitted) return <SalesPending name={name} category={category} email={me.email} phone={phone} city={address} onEdit={() => { setSalesSubmitted(false); setStep(0); }} onSignOut={async () => { await api("/auth/logout", "POST"); window.location.replace("/login"); }} />;
-  if (step >= 6 && draft) return <section className="card onboarding-success narrow"><Badge tone="green">LIVE</Badge><h1>Your business is live 🎉</h1><p>Print or share this QR anywhere. Your menu, payment details and business information can change later without replacing it.</p><img className="qr-image" src={`/api/locations/${draft.id}/qr?format=svg&kind=page`} alt={`${name} permanent QR`} /><p className="public-link">{location.origin}/q/{draft.publicId}</p><div className="button-row"><a className="button primary" href={`/api/locations/${draft.id}/qr?format=png&kind=page`} download>Download QR</a><a className="button secondary" href={`/q/${draft.publicId}`} target="_blank" rel="noreferrer">View Customer Page</a><button className="secondary" onClick={done}>Go to Dashboard</button></div></section>;
+  if (step >= 6 && draft) return <section className="card onboarding-success narrow"><div className="success-mark"><Check size={22} /></div><div className="auth-kicker">SETUP COMPLETE</div><h1>Your business is live</h1><p>Print or share this QR anywhere. Your menu, payment details and business information can change later without replacing it.</p><img className="qr-image" src={`/api/locations/${draft.id}/qr?format=svg&kind=page`} alt={`${name} permanent QR`} /><p className="public-link">{location.origin}/q/{draft.publicId}</p><div className="button-row"><a className="button primary" href={`/api/locations/${draft.id}/qr?format=png&kind=page`} download>Download QR</a><a className="button secondary" href={`/q/${draft.publicId}`} target="_blank" rel="noreferrer">View Customer Page</a><button className="secondary" onClick={done}>Go to Dashboard</button></div></section>;
+  const steps = ["Business basics", "Details", "Configure", "Plan", "Activate"];
   return <section className="card narrow onboarding-card">
-    <div className="onboarding-progress"><Badge>STEP {Math.min(step + 1, 6)} OF 6</Badge><span>{name || "New business"}</span></div>
-    <h1>{step === 0 ? "Let's set up your business" : step === 1 ? "Tell customers about you" : step === 2 ? "Configure your experience" : step === 3 ? "Add your menu" : step === 4 ? "Choose your plan" : "Preview your 1QR page"}</h1>
-    <p>{step === 0 ? "Create your business profile and your permanent 1QR." : step === 3 ? "Add a few items now, or skip and finish your menu later." : step === 4 ? "Every new workspace starts with a clear plan decision. Billing activation remains separate." : "Your progress is saved automatically."}</p><ErrorBox error={error} />
+    <div className="setup-heading"><div><div className="auth-kicker">SET UP YOUR BUSINESS</div><span className="setup-business">{name || "New business"}</span></div><span className="setup-count">{String(Math.min(step + 1, steps.length)).padStart(2, "0")} / {String(steps.length).padStart(2, "0")}</span></div>
+    <div className="onboarding-progress" aria-label="Setup progress">{steps.map((title, index) => <div className={`setup-step ${index === step ? "active" : ""} ${index < step ? "done" : ""}`} key={title}><span>{index < step ? <Check size={12} /> : index + 1}</span><small>{title}</small></div>)}</div>
+    <h1>{step === 0 ? "Let's set up your business" : step === 1 ? "Tell customers about you" : step === 2 ? "Configure your experience" : step === 3 ? "Choose your plan" : "Activate your business"}</h1>
+    <p>{step === 0 ? "Create your business profile and permanent 1QR." : step === 3 ? "Start with the tools your customers and team need." : step === 4 ? "Your QR is ready. Add your menu and finish the details from the dashboard." : "Add the details customers need to find and trust you."}</p><ErrorBox error={error} />
     {step === 0 && <><Field title="Business name" value={name} onChange={(e: any) => { const value = e.target.value; setName(value); if (!slugTouched) setSlug(normalizeSlugSuggestion(value)); }} required /><Field title="Permanent page URL" value={slug} onChange={(e: any) => { setSlugTouched(true); setSlug(e.target.value); setError(""); }} onBlur={() => { const normalized = normalizeSlugSuggestion(slug); setSlug(normalized); setSlugBlurred(true); setSlugSubmitted(true); }} error={slugSubmitted || slugBlurred ? (slugAvailability === "unavailable" && slugAvailabilityValue === normalizeSlugSuggestion(slug) ? "That URL is already taken. Try another one." : slugError) : ""} success={slugAvailability === "available" && slugAvailabilityValue === normalizeSlugSuggestion(slug) ? "Available" : ""} description={slugAvailability === "checking" ? "Checking availability…" : "Use a name customers will recognize."} autoCapitalize="none" autoCorrect="off" /><small className="slug-preview">{location.origin}/b/{normalizeSlugSuggestion(slug) || "your-business"}</small><label className="field"><span>Business category</span><select value={category} onChange={(e) => setCategory(e.target.value)}>{[["restaurant", "Restaurant"], ["cafe", "Cafe"], ["cloud_kitchen", "Cloud Kitchen"], ["retail", "Retail Store"], ["salon", "Salon"], ["clinic", "Clinic"], ["hotel", "Hotel"], ["professional_services", "Professional Services"], ["generic", "Other"]].map(([v, t]) => <option key={v} value={v}>{t}</option>)}</select></label></>}
     {step === 1 && <><Field title="Description" value={description} onChange={(e: any) => setDescription(e.target.value)} /><Field title="Phone number" value={phone} onChange={(e: any) => setPhone(e.target.value)} inputMode="tel" /><Field title="Address" value={address} onChange={(e: any) => setAddress(e.target.value)} /><Field title="Opening hours" value={hours} onChange={(e: any) => setHours(e.target.value)} /></>}
     {step === 2 && restaurant && <><label className="check"><input type="checkbox" checked readOnly /> Accept restaurant orders</label><label className="check"><input type="checkbox" checked readOnly /> Dine-in</label><label className="check"><input type="checkbox" checked readOnly /> Takeaway</label><Field title="Tax (%)" type="number" min="0" max="30" step="0.01" value={tax} onChange={(e: any) => setTax(e.target.value)} /><Field title="Packaging fee (₹)" type="number" min="0" step="1" value={packaging} onChange={(e: any) => setPackaging(e.target.value)} /></>}
     {step === 2 && !restaurant && <div className="empty"><h3>Your category is ready</h3><p>Configure links, payments and services later from your dashboard.</p></div>}
-    {step === 3 && restaurant && <><div className="onboarding-menu-list">{draft?.items?.map((i: Any) => <div className="list-row" key={i.id}><span>{i.name}</span><strong>{money(i.price_paise)}</strong></div>)}</div><div className="two-fields"><Field title="Item name" value={itemName} onChange={(e: any) => setItemName(e.target.value)} /><Field title="Price (₹)" type="number" value={itemPrice} onChange={(e: any) => setItemPrice(e.target.value)} /></div><button className="secondary" type="button" onClick={addItem} disabled={busy || !itemName || !itemPrice}>Add item</button><small>Customers cannot order until an available item exists. You can skip this step for a browse-only page.</small></>}
-    {step === 3 && !restaurant && <p>Skip to publish your business page.</p>}
-    {step === 4 && (primeEligible ? <div className="plan-grid">{(plans.length ? plans : [{ id: "prime", name: "Prime", price_paise: 59900, original_price_paise: 159900, max_staff: 5, entitlements: { locations: 10, staff: 5, orders: true, analytics: true, modules: true }, recommended: true }]).filter((plan: Any) => plan.id === "prime").map((plan: Any) => <button type="button" key={plan.id} className={`plan-card ${planId === plan.id ? "selected" : ""}`} onClick={() => setPlanId(plan.id)}><span className="plan-card-top"><Badge tone="green">RECOMMENDED</Badge>{planId === plan.id && <Check size={18} />}</span><strong>{plan.name}</strong><span className="plan-price"><del>{money(plan.original_price_paise || 159900)}</del> {money(plan.price_paise)}<small>/ month · Launch price</small></span><small>Dynamic QR · menu · orders · tables · analytics · up to {plan.max_staff || plan.entitlements?.staff || 5} staff</small></button>)}</div> : <div className="plan-grid"><div className="plan-card selected"><Badge>BUILT AROUND YOUR BUSINESS</Badge><strong>Custom</strong><span className="plan-price">Let’s talk</span><small>Custom onboarding, tailored customer experience, and dedicated setup support.</small></div></div>)}
-    {step === 5 && <><div className="preview-panel"><Badge>{label(category)}</Badge><h2>{name}</h2><p>{description || "Your description will appear here."}</p><p>{address || "Add your address later from Business page."}</p></div><a className="button secondary" href={draft?.publicId ? `/q/${draft.publicId}` : "#"} target="_blank" rel="noreferrer">Preview as Customer <ArrowUpRight size={16} /></a></>}
-    <div className="button-row onboarding-actions">{step > 0 && <button className="secondary" onClick={() => setStep(step - 1)} disabled={busy}>Back</button>}{step < 5 && <button className="primary" onClick={() => step === 4 ? (primeEligible ? (paymentVerified ? setStep(5) : startPrimeCheckout()) : publish()) : save(step + 1)} disabled={busy || (step === 0 && (!name || !slug))}>{busy ? (step === 4 && primeEligible ? "Preparing secure checkout…" : "Saving…") : step === 4 && !primeEligible ? "Request a callback" : step === 4 ? (paymentVerified ? "Continue setup" : "Continue with Prime") : "Next"} <ArrowUpRight size={16} /></button>}{step === 5 && <button className="primary" onClick={publish} disabled={busy || !planId || !paymentVerified}>{busy ? "Publishing…" : "Publish Business"}</button>}</div>
+    {step === 3 && (primeEligible ? <div className="plan-grid">{(plans.length ? plans : [{ id: "prime", name: "Prime", price_paise: 59900, original_price_paise: 159900, max_staff: 5, entitlements: { locations: 10, staff: 5, orders: true, analytics: true, modules: true }, recommended: true }]).filter((plan: Any) => plan.id === "prime").map((plan: Any) => <button type="button" key={plan.id} className={`plan-card ${planId === plan.id ? "selected" : ""}`} onClick={() => setPlanId(plan.id)}><span className="plan-card-top"><Badge tone="green">RECOMMENDED</Badge>{planId === plan.id && <span className="plan-selected"><Check size={15} /> Selected</span>}</span><strong>{plan.name}</strong><span className="plan-price"><span className="plan-price-main">{money(plan.price_paise)}</span><span className="plan-price-period">/ month</span></span><span className="plan-price-note"><del>{money(plan.original_price_paise || 159900)}</del> launch price</span><span className="plan-features"><span><Check size={14} /> Permanent QR</span><span><Check size={14} /> Digital menu and customer page</span><span><Check size={14} /> Orders, tables and analytics</span><span><Check size={14} /> Up to {plan.max_staff || plan.entitlements?.staff || 5} staff</span></span></button>)}</div> : <div className="plan-grid"><div className="plan-card selected"><Badge>BUILT AROUND YOUR BUSINESS</Badge><strong>Custom</strong><span className="plan-price"><span className="plan-price-main">Let’s talk</span></span><span className="plan-features">Custom onboarding, tailored customer experience, and dedicated setup support.</span></div></div>)}
+    {step === 4 && <><div className="preview-panel activation-preview"><div className="success-mark"><Check size={22} /></div><Badge>{paymentVerified ? "PRIME READY" : label(category)}</Badge><h2>{paymentVerified ? "Your business is ready to build." : name}</h2><p>{paymentVerified ? "Open your dashboard to add your first menu item, set up tables and customize your customer page." : "Review your details before activation."}</p><p>{address || "Add your address later from Business profile."}</p></div></>}
+    <div className="button-row onboarding-actions">{step > 0 && <button className="secondary" onClick={() => setStep(step - 1)} disabled={busy}>Back</button>}{step < 4 && <button className="primary" onClick={() => step === 3 ? (primeEligible ? (paymentVerified ? setStep(4) : startPrimeCheckout()) : publish()) : save(step + 1)} disabled={busy || (step === 0 && (!name || !slug))}>{busy ? (step === 3 && primeEligible ? "Preparing secure checkout…" : "Saving…") : step === 3 && !primeEligible ? "Request a callback" : step === 3 ? (paymentVerified ? "Continue" : "Continue with Prime") : "Continue"} <ArrowUpRight size={16} /></button>}{step === 4 && <button className="primary" onClick={publish} disabled={busy || !planId || !paymentVerified}>{busy ? "Activating…" : "Open dashboard"}</button>}</div>
   </section>;
 }
 function Profile({ l, done }: any) {
@@ -1212,34 +1245,7 @@ function Catalogue({ l, done }: any) {
           required
           defaultValue={edit ? edit.price_paise / 100 : ""}
         />
-        <Field
-          title="Image URL (HTTPS)"
-          value={image}
-          onChange={(e: any) => setImage(e.target.value)}
-        />
-        <Field
-          title="Or upload an image (up to 5 MB)"
-          type="file"
-          accept="image/png,image/jpeg,image/webp"
-          onChange={async (e: any) => {
-            const f = e.target.files?.[0];
-            if (!f) return;
-            try {
-              const data = new FormData();
-              data.append("file", f);
-              const res = await fetch(`/api/locations/${l.id}/upload`, {
-                method: "POST",
-                body: data,
-                credentials: "include",
-              });
-              const out = await res.json();
-              if (!res.ok) throw Error(out.error);
-              setImage(out.url);
-            } catch (e) {
-              setError((e as Error).message);
-            }
-          }}
-        />
+        <MediaUploader locationId={l.id} value={image} onChange={(url) => setImage(url || "")} title="Item photo" />
         <label className="check">
           <input
             type="checkbox"
@@ -1305,6 +1311,7 @@ function Tables({ l }: any) {
       {data?.tables?.map((t: Any) => <div className="list-row table-row" key={t.id}>
         <div className="grow"><strong>{t.name}</strong><small>{t.enabled ? "Active table QR" : "Disabled · QR unavailable"}</small></div>
         {l.role !== "staff" && <label className="table-assignee"><span>Orders to</span><select aria-label={`Assign orders for ${t.name}`} value={assignees[t.id] || ""} onChange={(e) => assign(t.id, e.target.value)}><option value="">Owner fallback</option>{team.map((member) => <option key={member.id} value={member.id}>{member.email}</option>)}</select></label>}
+        <div className="table-row-actions">
         <Badge tone={t.enabled ? "green" : ""}>{t.enabled ? "ACTIVE" : "OFF"}</Badge>
         <button className="text-button" onClick={() => showHistory(t)}>History</button>
         <button className="text-button" onClick={() => {
@@ -1312,6 +1319,7 @@ function Tables({ l }: any) {
           if (next && next !== t.name) api(`/locations/${l.id}/tables/${t.id}`, "PATCH", { name: next, enabled: !!t.enabled }).then(load).catch((e) => setFailure(e.message));
         }}><Pencil size={14} /> Rename</button>
         <button className="text-button" onClick={() => toggle(t)}>{t.enabled ? "Disable" : "Enable"}</button>
+        </div>
       </div>)}
       {selected && history && <div className="table-history card-soft">
         <div className="card-heading"><h3>{selected.name} history</h3><button className="text-button" onClick={() => {setSelected(null);setHistory(null);}}>Close</button></div>
@@ -1349,15 +1357,6 @@ function CustomerDesigner({ l, done }: any) {
       setSaved(true); done();
     } catch (e) { setError((e as Error).message); }
   }
-  async function upload(e: any, target: "logoUrl" | "coverUrl") {
-    const file = e.target.files?.[0]; if (!file) return;
-    try {
-      const f = new FormData(); f.append("file", file);
-      const res = await fetch(`/api/locations/${l.id}/upload`, { method: "POST", body: f, credentials: "include" });
-      const out = await res.json(); if (!res.ok) throw Error(out.error);
-      setA((x: Any) => ({ ...x, [target]: out.url, themePreset: "custom" }));
-    } catch (e) { setError((e as Error).message); }
-  }
   const presets: Any = {
     minimal: { backgroundColor: "#f6f7f4", textColor: "#202f2c", primaryColor: "#174f43", secondaryColor: "#deedaf", buttonColor: "#174f43", buttonTextColor: "#ffffff" },
     midnight: { backgroundColor: "#090b0c", textColor: "#f7faf8", primaryColor: "#d9f0a6", secondaryColor: "#1a2422", buttonColor: "#f7faf8", buttonTextColor: "#090b0c" },
@@ -1374,10 +1373,8 @@ function CustomerDesigner({ l, done }: any) {
       <label className="field"><span>Theme preset</span><select value={a.themePreset} onChange={(e) => preset(e.target.value)}>{["minimal","midnight","warm","elegant","bold","custom"].map((x) => <option key={x}>{x}</option>)}</select></label>
       <label className="field"><span>Layout</span><select value={a.layoutPreset} onChange={(e) => setA((x: Any) => ({ ...x, layoutPreset: e.target.value }))}><option value="restaurant">Restaurant focus</option><option value="hero">Hero</option><option value="compact">Compact</option></select></label>
       <div className="color-grid">{[["backgroundColor","Background"],["textColor","Text"],["primaryColor","Primary"],["secondaryColor","Accent"],["buttonColor","Button"],["buttonTextColor","Button text"]].map(([key,title]) => <label className="color-field" key={key}><span>{title}</span><input type="color" value={a[key]} onChange={(e) => set(key, e.target.value)} /><code>{a[key]}</code></label>)}</div>
-      <label className="field"><span>Business logo</span><input type="file" accept="image/png,image/jpeg,image/webp" onChange={(e) => upload(e, "logoUrl")} /></label>
-      {a.logoUrl && <img className="logo-preview" src={a.logoUrl} alt="Business logo preview" />}
-      <label className="field"><span>Cover image</span><input type="file" accept="image/png,image/jpeg,image/webp" onChange={(e) => upload(e, "coverUrl")} /></label>
-      {a.coverUrl && <img className="cover-preview" src={a.coverUrl} alt="Business cover preview" />}
+      <MediaUploader locationId={l.id} value={a.logoUrl} onChange={(url) => setA((x: Any) => ({ ...x, logoUrl: url, themePreset: "custom" }))} title="Business logo" />
+      <MediaUploader locationId={l.id} value={a.coverUrl} onChange={(url) => setA((x: Any) => ({ ...x, coverUrl: url, themePreset: "custom" }))} title="Cover image" />
       <h3>Visible actions</h3>
       {[["menu","Menu"],["pay","Pay"],["review","Google Review"],["whatsapp","WhatsApp"],["call","Call"],["directions","Directions"],["website","Website"],["instagram","Instagram"],["facebook","Facebook"],["youtube","YouTube"]].map(([key,title]) => <label className="check" key={key}><input type="checkbox" checked={!a.hiddenActions.includes(key)} onChange={(e) => setA((x: Any) => ({ ...x, hiddenActions: e.target.checked ? x.hiddenActions.filter((v: string) => v !== key) : [...x.hiddenActions, key] }))} />{title}</label>)}
       <h3>Action order</h3>
@@ -1425,36 +1422,113 @@ const next: Record<string, string[]> = {
   accepted: ["preparing", "cancelled"],
   preparing: ["ready", "cancelled"],
   ready: ["completed", "cancelled"],
+  served: ["closed"],
 };
+function operationalNext(order: Any, l: Any) {
+  const manager = l.role === "owner" || l.role === "manager";
+  const service = manager || l.operational_role === "service";
+  const kitchen = manager || l.operational_role === "kitchen" || !!l.permissions?.["orders.kitchen"];
+  if (order.state === "ready" && service) return ["served"];
+  if (order.state === "served" && (manager || l.operational_role === "cashier")) return ["closed"];
+  if (["submitted", "accepted", "preparing"].includes(order.state) && kitchen) return next[order.state] || [];
+  if (manager) return next[order.state] || [];
+  return [];
+}
+function operationalActionLabel(state: string) {
+  return ({ preparing: "Start preparing", ready: "Mark ready", served: "Mark served", closed: "Close order" } as Record<string, string>)[state] || label(state);
+}
 function Orders({ l }: any) {
   const { data, error, at, load } = usePoll(`/locations/${l.id}/orders`),
     { data: tableData } = usePoll(`/locations/${l.id}/tables`, 15000),
     [failure, setFailure] = useState(""),
-    [sound, setSound] = useState(false),
+    [sound, setSound] = useState(() => localStorage.getItem(`kitchen-sound:${l.id}`) === "on"),
+    [voice, setVoice] = useState(() => localStorage.getItem(`kitchen-voice:${l.id}`) === "on"),
+    [kitchenMode, setKitchenMode] = useState(false),
     [filter, setFilter] = useState("active"),
-    [tableFilter, setTableFilter] = useState("all");
+    [tableFilter, setTableFilter] = useState("all"),
+    [cancelTarget, setCancelTarget] = useState<Any | null>(null),
+    [cancelBusy, setCancelBusy] = useState(false),
+    [detailOrder, setDetailOrder] = useState<Any | null>(null);
   const seen = useRef<Set<string> | null>(null),
-    ctx = useRef<AudioContext | null>(null);
+    ctx = useRef<AudioContext | null>(null),
+    announced = useRef<Set<string>>(new Set()),
+    cancelledSeen = useRef<Map<string, number>>(new Map()),
+    handledEvents = useRef<Set<string>>(new Set()),
+    kitchenActivated = useRef(false),
+    soundLive = useRef(sound),
+    voiceLive = useRef(voice);
+  useEffect(() => { soundLive.current = sound; voiceLive.current = voice; }, [sound, voice]);
+  function announceOrder(payload: Any) {
+    const eventKey = payload.orderId || payload.eventId;
+    if (!eventKey || announced.current.has(eventKey)) return;
+    announced.current.add(eventKey);
+    if (ctx.current && soundLive.current) {
+      const oscillator = ctx.current.createOscillator(), gain = ctx.current.createGain();
+      oscillator.connect(gain); gain.connect(ctx.current.destination); gain.gain.value = 0.12; oscillator.frequency.value = 660; oscillator.start(); oscillator.stop(ctx.current.currentTime + 0.25);
+    }
+    if (voiceLive.current && "speechSynthesis" in window) {
+      const lines = (payload.lines || []).map((line: Any) => `${line.quantity} ${line.name}`).join(", ");
+      const mode = payload.orderType === "takeaway" ? "New takeaway order" : `New order${payload.tableName ? `. ${payload.tableName}` : ""}`;
+      window.speechSynthesis.cancel(); window.speechSynthesis.speak(new SpeechSynthesisUtterance(`${mode}. ${lines}`));
+    }
+  }
   useEffect(() => {
+    if (!kitchenMode) return;
+    const source = new EventSource(`/api/locations/${l.id}/operations/events`);
+    const onOrder = (event: MessageEvent) => { try { announceOrder({ ...JSON.parse(event.data), eventId: event.lastEventId }); load(); } catch {} };
+    const onOrderUpdate = (event: MessageEvent) => {
+      try {
+        const payload = JSON.parse(event.data);
+        const eventKey = event.lastEventId || `${payload.orderId}:${payload.itemId || "update"}:${payload.cancelledQuantity || ""}`;
+        if (handledEvents.current.has(eventKey)) return;
+        handledEvents.current.add(eventKey);
+        if (payload.itemCancelled && ctx.current && soundLive.current) {
+          const oscillator = ctx.current.createOscillator(), gain = ctx.current.createGain();
+          oscillator.connect(gain); gain.connect(ctx.current.destination); gain.gain.value = 0.08; oscillator.frequency.value = 420; oscillator.start(); oscillator.stop(ctx.current.currentTime + 0.16);
+        }
+        if (payload.itemCancelled && voiceLive.current && "speechSynthesis" in window) {
+          cancelledSeen.current.set(`${payload.orderId}:${payload.itemId}`, Number(payload.cancelledQuantity || 1));
+          window.speechSynthesis.cancel();
+          window.speechSynthesis.speak(new SpeechSynthesisUtterance(`${payload.tableName || "Order"}. ${payload.cancelledQuantity || 1} ${payload.itemName || "item"} cancelled.`));
+        }
+        load();
+      } catch {}
+    };
+    source.addEventListener("order.created", onOrder);
+    source.addEventListener("order.updated", onOrderUpdate);
+    source.onerror = () => setFailure("Realtime connection unavailable; polling continues.");
+    return () => { source.removeEventListener("order.created", onOrder); source.removeEventListener("order.updated", onOrderUpdate); source.close(); };
+  }, [l.id, kitchenMode]);
+  useEffect(() => {
+    if (!kitchenMode) {
+      kitchenActivated.current = false;
+      return;
+    }
     if (!data) return;
     const ids = new Set<string>(data.orders.map((o: Any) => o.id));
-    if (
-      sound &&
-      seen.current &&
-      [...ids].some((x) => !seen.current!.has(x)) &&
-      ctx.current
-    ) {
-      const o = ctx.current.createOscillator(),
-        g = ctx.current.createGain();
-      o.connect(g);
-      g.connect(ctx.current.destination);
-      g.gain.value = 0.12;
-      o.frequency.value = 660;
-      o.start();
-      o.stop(ctx.current.currentTime + 0.25);
+    if (!kitchenActivated.current) {
+      kitchenActivated.current = true;
+      seen.current = ids;
+      data.orders.forEach((o: Any) => (o.orderItems || []).forEach((item: Any) => cancelledSeen.current.set(`${o.id}:${item.order_item_id}`, Number(item.cancelled_quantity || 0))));
+      return;
+    }
+    if (kitchenMode && seen.current) {
+      data.orders.filter((o: Any) => !seen.current!.has(o.id) && !announced.current.has(o.id)).forEach((o: Any) => announceOrder({ orderId: o.id, orderType: o.order_type, tableName: o.tableName, lines: o.lines }));
+    }
+    if (kitchenMode && voice && "speechSynthesis" in window) {
+      data.orders.forEach((o: Any) => (o.orderItems || []).forEach((item: Any) => {
+        const key = `${o.id}:${item.order_item_id}`;
+        const cancelled = Number(item.cancelled_quantity || 0);
+        const previous = cancelledSeen.current.get(key) || 0;
+        if (cancelled > previous) {
+          cancelledSeen.current.set(key, cancelled);
+          window.speechSynthesis.cancel();
+          window.speechSynthesis.speak(new SpeechSynthesisUtterance(`${o.tableName || "Order"}. ${cancelled - previous} ${item.item_name_snapshot || "item"} cancelled.`));
+        }
+      }));
     }
     seen.current = ids;
-  }, [data, sound]);
+  }, [data, kitchenMode, voice]);
   return (
     <>
       <div className="toolbar">
@@ -1468,12 +1542,15 @@ function Orders({ l }: any) {
             onClick={() => {
               if (!ctx.current) ctx.current = new AudioContext();
               ctx.current.resume();
-              setSound(!sound);
+              const next = !sound; setSound(next); setKitchenMode(true); localStorage.setItem(`kitchen-sound:${l.id}`, next ? "on" : "off");
             }}
           >
             <Bell size={16} />
             {sound ? "Sound on" : "Enable sound"}
           </button>
+          <button className="secondary" onClick={() => { if (!ctx.current) ctx.current = new AudioContext(); ctx.current.resume(); setKitchenMode(true); }}><Bell size={16} /> {kitchenMode ? "Kitchen Mode on" : "Start Kitchen Mode"}</button>
+          <button className="secondary" onClick={() => { const next = !voice; setVoice(next); localStorage.setItem(`kitchen-voice:${l.id}`, next ? "on" : "off"); }}>{voice ? "Voice on" : "Voice off"}</button>
+          <button className="secondary" onClick={() => { if (!ctx.current) ctx.current = new AudioContext(); ctx.current.resume(); const oscillator = ctx.current.createOscillator(), gain = ctx.current.createGain(); oscillator.connect(gain); gain.connect(ctx.current.destination); gain.gain.value = 0.12; oscillator.frequency.value = 660; oscillator.start(); oscillator.stop(ctx.current.currentTime + 0.25); }}>Test sound</button>
           <button className="secondary" onClick={load}>
             <RefreshCw size={16} />
             Refresh
@@ -1513,18 +1590,18 @@ function Orders({ l }: any) {
               <small>
                 {label(o.order_type)} ·{" "}
                 {o.tableName ? <strong className="order-table-label">{o.tableName}</strong> : "General QR · "}
-                {new Date(o.created_at + "Z").toLocaleString("en-IN")}
+                {formatDate(o.created_at)}
               </small>
               {(o.customer_name || o.customer_phone) && <small>{o.customer_name || "Guest"}{o.customer_phone ? ` · ${o.customer_phone}` : ""}</small>}
               <div className="order-lines">
-                {o.lines.map((line: Any) => (
-                  <div key={line.itemId}>
-                    <span>
-                      {line.quantity} × {line.name}
-                    </span>
-                    <strong>{money(line.pricePaise * line.quantity)}</strong>
-                  </div>
-                ))}
+                {o.lines.map((line: Any) => {
+                  const item = o.orderItems?.find((x: Any) => x.menu_item_id === line.itemId);
+                  const cancelled = Number(item?.cancelled_quantity || line.cancelledQuantity || 0);
+                  const active = Math.max(0, Number(line.quantity) - cancelled);
+                  const paid = ["paid", "verified", "captured"].includes(String(o.payment_state).toLowerCase());
+                  const canCancel = !!item && active > 0 && (["owner", "manager"].includes(l.role) || (l.role === "staff" && l.operational_role === "service" && !paid));
+                  return <div key={line.itemId}><span>{active > 0 && `${active} × ${line.name}`}{cancelled > 0 && <><del>{active > 0 ? ` · ${cancelled} × ${line.name}` : `${cancelled} × ${line.name}`}</del> <Badge>Cancelled</Badge></>}{active === 0 && cancelled === 0 && `${line.quantity} × ${line.name}`}</span><strong>{active > 0 && money(line.pricePaise * active)}</strong>{canCancel ? <button className="text-button" onClick={() => setCancelTarget({ ...item, orderId: o.id, orderNumber: o.publicOrderNumber, name: line.name, unitPrice: line.pricePaise, paid, locked: item.cancellable_until && new Date(item.cancellable_until).getTime() <= Date.now() })}>{item.cancellable_until && new Date(item.cancellable_until).getTime() > Date.now() ? "Cancel item" : "Cancellation ended"}</button> : paid && l.role === "staff" && <small className="error-text">Payment completed. Ask a manager for help.</small>}</div>;
+                })}
               </div>
               {o.instructions && <p className="note">{o.instructions}</p>}
               <div className="list-row">
@@ -1536,7 +1613,7 @@ function Orders({ l }: any) {
                 separate from provider verification.
               </small>
               <div className="button-row">
-                {(next[o.state] || []).map((s, i) => (
+                {operationalNext(o, l).map((s, i) => (
                   <button
                     className={i === 0 ? "primary" : "secondary"}
                     key={s}
@@ -1554,10 +1631,11 @@ function Orders({ l }: any) {
                       }
                     }}
                   >
-                    {label(s)}
+                    {operationalActionLabel(s)}
                   </button>
                 ))}
               </div>
+              <button className="text-button" onClick={async () => { try { setDetailOrder(await api(`/locations/${l.id}/orders/${o.id}`)); } catch (e) { setFailure((e as Error).message); } }}>View order detail</button>
               {o.payment_state === "pending" && l.role !== "staff" && (
                 <button
                   className="text-button"
@@ -1591,9 +1669,32 @@ function Orders({ l }: any) {
           </Empty>
         </section>
       )}
+      {cancelTarget && <CancelItemDialog l={l} target={cancelTarget} busy={cancelBusy} onClose={() => setCancelTarget(null)} onSubmit={async (body: Any) => { setCancelBusy(true); try { await api(`/locations/${l.id}/orders/${cancelTarget.orderId}/items/${cancelTarget.order_item_id}/cancel`, "POST", body); setCancelTarget(null); load(); } catch (e) { setFailure((e as Error).message); } finally { setCancelBusy(false); } }} />}
+      {detailOrder && <OrderDetail order={detailOrder} onClose={() => setDetailOrder(null)} />}
       <Requests l={l} />
     </>
   );
+}
+function humanRefundState(value: string) {
+  return ({ MANUAL_REQUIRED: "Manual refund required", PROCESSING: "Refund processing", SUCCEEDED: "Refund completed", REQUESTED: "Refund required", FAILED: "Refund failed" } as Record<string, string>)[value] || value;
+}
+function OrderDetail({ order, onClose }: { order: Any; onClose: () => void }) {
+  const stateLabels: Record<string, string> = { submitted: "Order placed", accepted: "Accepted", preparing: "Preparing", ready: "Ready", served: "Served", completed: "Closed", closed: "Closed" };
+  const events = (order.events || []).filter((event: Any) => stateLabels[event.state]);
+  const timeline = events.map((event: Any) => ({ label: stateLabels[event.state], at: event.created_at, note: event.reason }));
+  if (order.bill_requested_at) timeline.push({ label: "Bill requested", at: order.bill_requested_at, note: "" });
+  if (order.paid_at) timeline.push({ label: "Paid", at: order.paid_at, note: "" });
+  (order.refunds || []).forEach((refund: Any) => { const note = refund.item_name_snapshot ? `${money(refund.amount_paise)} · ${refund.item_name_snapshot}` : money(refund.amount_paise); const initialLabel = refund.status === "SUCCEEDED" ? "Refund required" : humanRefundState(refund.status); timeline.push({ label: initialLabel, at: refund.created_at, note }); if (refund.processed_at && refund.status === "SUCCEEDED") timeline.push({ label: "Refund completed", at: refund.processed_at, note }); });
+  timeline.sort((a: Any, b: Any) => new Date(a.at).getTime() - new Date(b.at).getTime());
+  const duration = (start: string, end: string) => start && end ? `${Math.max(0, Math.round((new Date(end).getTime() - new Date(start).getTime()) / 60000))} min` : "—";
+  return <div className="modal-backdrop" role="dialog" aria-modal="true" aria-label="Order detail"><div className="card order-detail-modal"><div className="card-heading"><div><Badge tone="green">ORDER DETAIL</Badge><h2>#{order.publicOrderNumber}</h2><p className="muted">{order.tableName || "Takeaway"}</p></div><button className="text-button" onClick={onClose}>Close</button></div><section><h3>Timeline</h3><div className="order-timeline">{timeline.map((item: Any, index: number) => <div className="order-timeline-item" key={`${item.label}-${item.at}-${index}`}><span className="timeline-dot" /><div><strong>{item.label}</strong><small>{new Date(item.at).toLocaleTimeString("en-IN")}</small>{item.note && <p>{item.note}</p>}</div></div>)}</div></section><div className="operations-metrics"><Stat title="Queue time" value={duration(order.created_at, order.preparation_started_at)} note="Placed to preparation" /><Stat title="Preparation" value={duration(order.preparation_started_at, order.ready_at)} note="Preparation to ready" /><Stat title="Service handoff" value={duration(order.ready_at, order.served_at)} note="Ready to served" /><Stat title="Fulfillment" value={duration(order.created_at, order.served_at)} note="Placed to served" /></div>{(order.refunds || []).length > 0 && <section><h3>Financial history</h3>{order.refunds.map((refund: Any) => <div className="list-row" key={refund.id}><span>{refund.item_name_snapshot || "Order refund"}<small>{humanRefundState(refund.status)} · {new Date(refund.created_at).toLocaleTimeString("en-IN")}</small></span><strong>-{money(refund.amount_paise)}</strong></div>)}</section>}</div></div>;
+}
+function CancelItemDialog({ l, target, busy, onClose, onSubmit }: any) {
+  const [quantity, setQuantity] = useState(1), [reason, setReason] = useState("Customer requested"), [note, setNote] = useState("");
+  const privileged = l.role === "owner" || l.role === "manager";
+  const override = privileged && (!!target.locked || !!target.paid);
+  const until = target.cancellable_until ? new Date(target.cancellable_until) : null;
+  return <div className="modal-backdrop" role="dialog" aria-modal="true"><div className="card service-confirm"><Badge>{override ? "MANAGER ACTION" : "ITEM CANCELLATION"}</Badge><h3>{override && target.paid ? "Cancel & refund" : `Cancel ${target.name}?`}</h3><p>{target.name} · {money(target.unitPrice)} each</p>{target.paid && <p className="note">Payment already completed. This creates a manual refund requirement; it does not fake a refund.</p>}{!target.paid && !target.locked && until && <small>Cancellation available until {until.toLocaleTimeString("en-IN")}.</small>}{target.locked && !privileged && <p className="error-text">This item's cancellation window has ended. Ask a manager for help.</p>}{(!target.locked || privileged) && <><label className="field"><span>Quantity</span><input type="number" min="1" max={target.quantity - (target.cancelled_quantity || 0)} value={quantity} onChange={(e) => setQuantity(Number(e.target.value))} /></label><label className="field"><span>Reason</span><select value={reason} onChange={(e) => setReason(e.target.value)}><option>Customer requested</option><option>Ordered by mistake</option><option>Item unavailable</option><option>Customer escalation</option><option>Kitchen issue</option><option>Service recovery</option><option>Other</option></select></label><label className="field"><span>Note {reason === "Other" ? "(required)" : "(optional)"}</span><textarea value={note} onChange={(e) => setNote(e.target.value)} /></label></>}<div className="button-row"><button className="secondary" onClick={onClose}>Keep item</button>{(!target.locked || privileged) && <button className="primary" disabled={busy || (reason === "Other" && note.trim().length < 3)} onClick={() => onSubmit({ quantity, reason, note, override, idempotencyKey: crypto.randomUUID() })}>{busy ? "Saving…" : override && target.paid ? "Cancel & refund" : "Cancel item"}</button>}</div></div></div>;
 }
 function Requests({ l }: any) {
   const { data, error, load } = usePoll(`/locations/${l.id}/requests`, 10000),
@@ -1678,13 +1779,7 @@ function Payments({ l, emailVerified }: any) {
         <section className="card">
           <div className="card-heading">
             <h2>Payment destinations</h2>
-            <button
-              className="text-button"
-              disabled={!data?.previousId}
-              onClick={() => act("rollback")}
-            >
-              Rollback ↶
-            </button>
+            {data?.previousId && <button className="text-button" onClick={() => act("rollback")}>Restore previous destination ↶</button>}
           </div>
           {data?.routes.map((r: Any) => (
             <div
@@ -1700,7 +1795,7 @@ function Payments({ l, emailVerified }: any) {
               <strong>{r.vpa}</strong>
               <p>{r.payee}</p>
               <small>
-                Basic UPI · Automatic payment confirmation unavailable
+                Manual confirmation · independent verification required
               </small>
               <div className="button-row">
                 {r.state === "draft" && l.role === "owner" && (
@@ -1842,8 +1937,6 @@ function QrStudio({ l }: any) {
   return (
     <div className="two-columns">
       <section className="card qr-card">
-        {localOrigin && <small className="qr-local-note">Local preview — this QR only works on this computer.</small>}
-        {temporaryPreviewOrigin && <small className="qr-local-note">Preview link — use the production QR before printing.</small>}
         {!localOrigin && !temporaryPreviewOrigin && <Badge>READY FOR YOUR COUNTER</Badge>}
         <h2>{l.name}</h2>
         <p>
@@ -1891,10 +1984,10 @@ function QrStudio({ l }: any) {
           ))}
         </div>
         <div className="button-row">
-          <button className="secondary" onClick={share}>{localOrigin ? "Copy local test link" : "Share / copy link"}</button>
+          <button className="secondary" onClick={share}>Share / copy link</button>
           <button className="secondary" onClick={printCard}>Print card</button>
         </div>
-        <p className="public-link"><strong>{localOrigin ? "Local test URL" : temporaryPreviewOrigin ? "Temporary preview URL" : "Public URL"}</strong><br />{publicUrl}</p>
+        <p className="public-link"><strong>{localOrigin || temporaryPreviewOrigin ? "Permanent QR URL" : "Public URL"}</strong><br />{localOrigin || temporaryPreviewOrigin ? "Your printed QR remains stable as your business changes." : publicUrl}</p>
         <h3>Print with confidence</h3>
         <ul>
           <li>PNG: 1200 × 1200 pixels. Print at 100 × 100 mm or larger.</li>
@@ -1918,7 +2011,8 @@ function QrStudio({ l }: any) {
   );
 }
 function Analytics({ l }: any) {
-  const { data, error } = usePoll(`/locations/${l.id}/analytics`, 30000);
+  const { data, error } = usePoll(`/locations/${l.id}/analytics`, 30000),
+    { data: ops } = usePoll(`/locations/${l.id}/operations/metrics?range=today`, 15000);
   const kinds = [
     "qr_scan",
     "page_view",
@@ -1951,6 +2045,11 @@ function Analytics({ l }: any) {
         ))}
       </div>
       <div className="card">
+        <div className="card-heading"><div><Badge tone="green">OPERATIONS</Badge><h2>Today at a glance</h2></div><span className="muted">Server-calculated</span></div>
+        <div className="operations-metrics"><Stat title="Orders served" value={ops?.ordersServed ?? 0} note="Reached the table" /><Stat title="Avg prep" value={ops?.averagePreparationMs != null ? `${Math.round(ops.averagePreparationMs / 60000)} min` : "—"} note="Kitchen time" /><Stat title="Service handoff" value={ops?.averageServiceHandoffMs != null ? `${Math.round(ops.averageServiceHandoffMs / 60000)} min` : "—"} note="Ready to served" /><Stat title="Avg table duration" value={ops?.averageTableDurationMs != null ? `${Math.round(ops.averageTableDurationMs / 60000)} min` : "—"} note="Closed sessions" /><Stat title="Avg order value" value={ops ? money(ops.averageOrderValuePaise) : "—"} note="Completed orders" /><Stat title="Spend / hour" value={ops?.averageSpendPerHourPaise != null ? money(ops.averageSpendPerHourPaise) : "—"} note="Closed table sessions" /></div>
+        {!!ops?.slowOrders?.length && <div className="slow-orders"><h3>Slow orders</h3>{ops.slowOrders.map((order: Any) => <div className="list-row" key={order.id}><span><strong>{order.tableName || order.publicOrderNumber}</strong><small>{label(order.state)} · {Math.round(order.ageMs / 60000)} min</small></span><Badge tone="amber">Needs attention</Badge></div>)}</div>}
+      </div>
+      <div className="card">
         <h2>Clear signals, honest outcomes</h2>
         <p>
           Page events are approximate counts, not unique people. No
@@ -1961,6 +2060,13 @@ function Analytics({ l }: any) {
       </div>
     </>
   );
+}
+function ServiceRequests({ l }: any) {
+  const { data, error, load } = usePoll(`/locations/${l.id}/service-requests`, 5000);
+  const [failure, setFailure] = useState("");
+  async function update(id: string, action: "acknowledge" | "complete") { try { await api(`/locations/${l.id}/service-requests/${id}/${action}`, "POST"); load(); } catch (e) { setFailure((e as Error).message); } }
+  const requests = data?.requests || [];
+  return <section className="service-requests-panel"><div className="toolbar"><div><Badge tone="green">SERVICE DESK</Badge><h2>Service requests</h2><p className="muted">Waiter, water, cutlery and bill requests for this location.</p></div><button className="secondary" onClick={load}><RefreshCw size={16} /> Refresh</button></div><ErrorBox error={failure || error} /><div className="service-request-columns">{([["NEW", "Needs attention"], ["ACKNOWLEDGED", "In progress"], ["COMPLETED", "Completed"]] as const).map(([status, title]) => <section className="card" key={status}><div className="card-heading"><h3>{title}</h3><Badge>{requests.filter((x: Any) => x.status === status).length}</Badge></div>{requests.filter((x: Any) => x.status === status).map((item: Any) => <article className="service-staff-card" key={item.id}><strong>{item.table_name}</strong><span>{label(item.type)}{item.quantity > 1 ? ` · ${item.quantity}` : ""}</span><small>{new Date(item.created_at).toLocaleTimeString("en-IN")}{item.assigned_staff_email ? ` · ${item.assigned_staff_email}` : ""}</small>{status === "NEW" && <button className="primary" onClick={() => void update(item.id, "acknowledge")}>Accept</button>}{status === "ACKNOWLEDGED" && <button className="secondary" onClick={() => void update(item.id, "complete")}>Complete</button>}</article>)}{!requests.some((x: Any) => x.status === status) && <p className="muted">Nothing here.</p>}</section>)}</div></section>;
 }
 function Staff({ l }: any) {
   const { data, error, load } = usePoll(`/tenants/${l.tenant_id}/staff`, 30000),
@@ -1977,10 +2083,10 @@ function Staff({ l }: any) {
           <div className="list-row" key={u.id}>
             <div className="grow">
               <strong>{u.email}</strong>
-              <small>{u.role}</small>
+              <small>{label(u.operational_role || u.role)} · {u.role}</small>
             </div>
             {u.role !== "owner" && (
-              <button
+              <div className="button-row"><select aria-label={`Role for ${u.email}`} value={u.operational_role || "service"} onChange={async (e) => { try { await api(`/tenants/${l.tenant_id}/staff`, "POST", { email: u.email, role: u.role, operationalRole: e.target.value }); load(); } catch (err) { setFailure((err as Error).message); } }}><option value="manager">Manager</option><option value="kitchen">Kitchen</option><option value="service">Service / Floor</option><option value="cashier">Cashier</option></select><button
                 className="text-button danger"
                 onClick={async () => {
                   try {
@@ -1995,7 +2101,7 @@ function Staff({ l }: any) {
                 }}
               >
                 Remove
-              </button>
+              </button></div>
             )}
           </div>
         ))}
@@ -2034,6 +2140,7 @@ function Staff({ l }: any) {
             </option>
           </select>
         </label>
+        <label className="field"><span>Operational role</span><select name="operationalRole"><option value="kitchen">Kitchen</option><option value="service">Service / Floor</option><option value="cashier">Cashier</option><option value="manager">Manager</option></select></label>
         <small>
           Only owners control billing, team access and destination
           configuration.
@@ -2043,8 +2150,10 @@ function Staff({ l }: any) {
     </div>
   );
 }
-function SettingsPage({ tenant, go, refresh }: any) {
+function SettingsPage({ tenant, l, go, refresh }: any) {
   const [error, setError] = useState(""), [notice, setNotice] = useState("");
+  const [cancellationWindow, setCancellationWindow] = useState(5);
+  useEffect(() => { api(`/locations/${l.id}/operations-settings`).then((x) => setCancellationWindow(x.cancellationWindowMinutes)).catch(() => {}); }, [l.id]);
   return (
     <div className="two-columns">
       <section className="card">
@@ -2108,6 +2217,7 @@ function SettingsPage({ tenant, go, refresh }: any) {
         <ErrorBox error={error} />
         {notice && <div className="success" role="status">{notice}</div>}
       </section>
+      <section className="card"><Badge>ORDER SETTINGS</Badge><h2>Item cancellation window</h2><p className="muted">Waiters can cancel customer-requested items only during this server-enforced window after placement. Managers can override it.</p><label className="field"><span>Cancellation window</span><select value={cancellationWindow} disabled={l.role !== "owner"} onChange={(e) => setCancellationWindow(Number(e.target.value))}><option value={2}>2 minutes</option><option value={5}>5 minutes</option><option value={10}>10 minutes</option><option value={15}>15 minutes</option><option value={30}>30 minutes</option></select></label>{l.role === "owner" && <button className="primary" onClick={async () => { try { await api(`/locations/${l.id}/operations-settings`, "PATCH", { cancellationWindowMinutes: cancellationWindow }); setNotice("Cancellation window saved."); } catch (e) { setError((e as Error).message); } }}>Save order settings</button>}</section>
       <section className="card">
         <h2>Built around your business</h2>
         <p>
@@ -2205,7 +2315,7 @@ function Admin() {
           <label className="field"><span>Status</span><select value={billingStatus} onChange={(e) => setBillingStatus(e.target.value)}><option value="">All statuses</option><option>CREATED</option><option>VERIFIED</option><option>FAILED</option><option>CANCELLED</option></select></label>
           <button className="secondary" type="submit">Filter payments</button>
         </form>
-        {billingPayments.length ? <div className="admin-billing-table"><div className="admin-billing-head"><span>Merchant / business</span><span>Plan</span><span>Amount</span><span>Status</span><span>Created</span></div>{billingPayments.map((payment) => <div className="admin-billing-row" key={payment.id}><div><strong>{payment.email}</strong><small>{payment.business_name || payment.tenant_name} · {label(payment.category || "")}</small></div><span>{payment.plan_name || "Prime"}</span><span>{money(payment.amount_paise)} {payment.currency}</span><Badge tone={payment.status === "VERIFIED" ? "green" : payment.status === "FAILED" ? "red" : "amber"}>{payment.status}</Badge><small>{new Date(payment.created_at).toLocaleString()}</small></div>)}</div> : <Empty title="No billing records yet">Verified Prime payments will appear here.</Empty>}
+        {billingPayments.length ? <div className="admin-billing-table"><div className="admin-billing-head"><span>Merchant / business</span><span>Plan</span><span>Amount</span><span>Status</span><span>Created</span></div>{billingPayments.map((payment) => <div className="admin-billing-row" key={payment.id}><div><strong>{payment.email}</strong><small>{payment.business_name || payment.tenant_name} · {label(payment.category || "")}</small></div><span>{payment.plan_name || "Prime"}</span><span>{money(payment.amount_paise)} {payment.currency}</span><Badge tone={payment.status === "VERIFIED" ? "green" : payment.status === "FAILED" ? "red" : "amber"}>{payment.status}</Badge><small>{formatDate(payment.created_at)}</small></div>)}</div> : <Empty title="No billing records yet">Verified Prime payments will appear here.</Empty>}
       </section>
       <div className="two-columns">
         <section className="card admin-account-results">
@@ -2243,7 +2353,7 @@ function Admin() {
             <h3>Team</h3>
             {(selected.staff || []).map((member: Any) => <div className="list-row" key={member.id}><div className="grow"><strong>{member.email}</strong><small>{label(member.role)} · {member.last_active_at ? `last active ${new Date(member.last_active_at).toLocaleDateString()}` : "No activity recorded"}</small></div></div>)}
             <h3>Login history</h3>
-            {(selected.loginHistory || []).slice(0, 8).map((event: Any) => <div className="list-row" key={event.id}><div className="grow"><strong>{event.success ? "Successful login" : "Failed login"}</strong><small>{new Date(event.created_at).toLocaleString()} · {event.client_type} · {event.platform || "unknown"}</small></div></div>)}
+            {(selected.loginHistory || []).slice(0, 8).map((event: Any) => <div className="list-row" key={event.id}><div className="grow"><strong>{event.success ? "Successful login" : "Failed login"}</strong><small>{formatDate(event.created_at)} · {event.client_type} · {event.platform || "unknown"}</small></div></div>)}
             <h3>Routes</h3>
             {selected.routes.map((r: Any) => (
               <div className="route-card" key={r.id}>
@@ -2392,6 +2502,76 @@ function Admin() {
     </>
   );
 }
+function CustomerPromotion({ slug, promotionId }: { slug: string; promotionId: string }) {
+  const [business, setBusiness] = useState<Any | null>(null);
+  const [promotion, setPromotion] = useState<Any | null>(null);
+  const [error, setError] = useState("");
+  useEffect(() => {
+    Promise.all([api(`/public/${slug}`), api(`/public/${slug}/promotions/${encodeURIComponent(promotionId)}`)])
+      .then(([nextBusiness, nextPromotion]) => { setBusiness(nextBusiness); setPromotion(nextPromotion); document.title = `${nextPromotion.title} · ${nextBusiness.name}`; })
+      .catch((e) => setError((e as Error).message));
+  }, [slug, promotionId]);
+  if (error) return <div className="customer-wrap"><Brand /><ErrorBox error={error} /><a className="button secondary" href={`/q/${encodeURIComponent(slug)}`}>Back to business</a></div>;
+  if (!business || !promotion) return <div className="customer-wrap"><Brand /><p>Opening this offer…</p></div>;
+  const value = promotion.type === "percentage" ? `${Number(promotion.valuePaise) / 100}% off` : promotion.type === "flat" || promotion.type === "special_price" ? `${money(Number(promotion.valuePaise))} offer` : "Special offer";
+  const stateCopy = promotion.state === "active" ? "Available now" : promotion.state === "scheduled" ? `Starts ${formatDate(promotion.startsAt)}` : "This offer has ended";
+  return <div className="customer-wrap customer-branded customer-promotion-page">
+    <header className="customer-top"><div className="customer-brand-link" aria-label={`Back to ${business.name}`}><Brand /></div><a className="customer-top-button" href={`/q/${encodeURIComponent(slug)}/menu`} aria-label="Back to menu"><ArrowLeft size={18} /></a></header>
+    <main className="customer-promotion-shell">
+      <a className="hub-back" href={`/q/${encodeURIComponent(slug)}`}><ArrowLeft size={17} /> {business.name}</a>
+      <section className="customer-promotion-hero">
+        {promotion.imageUrl ? <img src={promotion.imageUrl} alt="" /> : <div className="customer-promotion-icon"><Tag size={28} /></div>}
+        <Badge tone={promotion.state === "active" ? "green" : promotion.state === "expired" ? "red" : "amber"}>{stateCopy}</Badge>
+        <h1>{promotion.title}</h1>
+        <p>{promotion.description || "A limited-time offer from this business."}</p>
+        <strong className="customer-promotion-value">{value}</strong>
+      </section>
+      <section className="card customer-promotion-details">
+        <div className="customer-promotion-detail-row"><span><Clock size={16} /> Offer window</span><strong>{promotion.state === "active" ? `Ends ${formatDate(promotion.endsAt)}` : promotion.state === "scheduled" ? `Starts ${formatDate(promotion.startsAt)}` : `Ended ${formatDate(promotion.endsAt)}`}</strong></div>
+        <div className="customer-promotion-detail-row"><span><Gift size={16} /> Applies to</span><strong>{promotion.target?.allMenu ? "All available menu items" : promotion.items?.length ? `${promotion.items.length} selected item${promotion.items.length === 1 ? "" : "s"}` : "Selected items"}</strong></div>
+      </section>
+      {!!promotion.items?.length && <section className="customer-promotion-items"><div className="section-title"><h2>Included items</h2><span>{promotion.items.length}</span></div>{promotion.items.map((item: Any) => <a className="customer-promotion-item" key={item.id} href={`/q/${encodeURIComponent(slug)}/menu`}><div>{item.image && <img src={item.image} alt="" />}<span><strong>{item.name}</strong><small>{item.description || "Available on this menu"}</small></span></div><ChevronRight size={18} /></a>)}</section>}
+      <a className="button primary wide" href={`/q/${encodeURIComponent(slug)}/menu`}>View menu <ArrowUpRight size={17} /></a>
+    </main>
+  </div>;
+}
+
+function ServiceHub({ slug, business }: { slug: string; business: Any }) {
+  const [requests, setRequests] = useState<Any[]>(() => JSON.parse(sessionStorage.getItem(`service:${slug}`) || "[]"));
+  const [confirming, setConfirming] = useState<string | null>(null);
+  const [billView, setBillView] = useState<Any | null>(null);
+  const [busy, setBusy] = useState("");
+  const table = business.table;
+  useEffect(() => { sessionStorage.setItem(`service:${slug}`, JSON.stringify(requests)); }, [requests, slug]);
+  useEffect(() => {
+    if (!requests.length) return;
+    let live = true;
+    const poll = async () => { for (const item of requests) { try { const next = await api(`/public/service-requests/${item.publicToken}`); if (live) setRequests((current) => current.map((x) => x.publicToken === item.publicToken ? { ...x, ...next } : x)); } catch {} } };
+    void poll(); const timer = window.setInterval(poll, 4000); return () => { live = false; window.clearInterval(timer); };
+  }, [requests.map((x) => x.publicToken).join(",")]);
+  if (!table) return null;
+  const labels: Record<string, string> = { WAITER: "Call waiter", WATER: "Water", CUTLERY: "Cutlery", BILL: "Request bill" };
+  async function create(type: string, quantity = 1) {
+    setBusy(type);
+    try {
+      const result = await api(`/public/${slug}/service-requests`, "POST", { type, quantity, tableId: table.id, tableToken: table.publicToken });
+      setRequests((current) => current.some((x) => x.publicToken === result.request.publicToken) ? current : [...current, result.request]);
+      setConfirming(null);
+    } catch (e) { window.alert((e as Error).message); } finally { setBusy(""); }
+  }
+  return <section className="card customer-service-hub" aria-label="Restaurant service">
+    <div className="card-heading"><div><Badge>AT YOUR TABLE</Badge><h2>Need a hand?</h2></div><small>{table.name}</small></div>
+    <div className="service-action-row">{(["WAITER", "WATER", "CUTLERY", "BILL"] as const).map((type) => <button className="secondary service-action" key={type} onClick={() => setConfirming(type)} disabled={!!busy}><span>{labels[type]}</span><ArrowUpRight size={15} /></button>)}</div>
+    {!!requests.length && <div className="service-request-statuses">{requests.filter((x) => x.status !== "COMPLETED").map((item) => <div className="service-request-status" key={item.publicToken}><div><strong>{labels[item.type]}</strong>{item.quantity > 1 && <small> · {item.quantity}</small>}<small>{item.status === "ACKNOWLEDGED" ? "A staff member is handling your request." : "Requested"}</small></div>{item.type === "BILL" && <button className="text-button" onClick={async () => { try { setBillView(await api(`/public/service-requests/${item.publicToken}/bill`)); } catch (e) { window.alert((e as Error).message); } }}>View bill</button>}</div>)}</div>}
+    {confirming && <div className="modal-backdrop" role="dialog" aria-modal="true"><div className="card service-confirm"><h3>{confirming === "WAITER" ? `Call a waiter to ${table.name}?` : confirming === "BILL" ? `Request the bill for ${table.name}?` : `Request ${labels[confirming]}?`}</h3>{confirming === "BILL" && <p className="muted">This asks the team to finalize the bill. It does not mark anything paid.</p>}<div className="button-row"><button className="secondary" onClick={() => setConfirming(null)}>Cancel</button><button className="primary" onClick={() => void create(confirming)} disabled={!!busy}>{busy ? "Sending…" : labels[confirming]}</button></div></div></div>}
+    {billView && <BillView bill={billView} onClose={() => setBillView(null)} />}
+  </section>;
+}
+function BillView({ bill, onClose }: { bill: Any; onClose: () => void }) {
+  const refunds = bill.refunds || [];
+  return <div className="modal-backdrop" role="dialog" aria-modal="true" aria-label="Bill"><div className="card bill-view-modal"><div className="card-heading"><div><Badge tone="green">BILL</Badge><h2>{bill.tableName || "Order"}</h2><p className="muted">Order #{bill.orderNumber}</p></div><button className="text-button" onClick={onClose}>Close</button></div><div className="bill-lines">{(bill.items || []).map((item: Any) => <div className="list-row" key={item.itemId || item.name}><span>{item.quantity} × {item.name}</span><strong>{money(item.lineTotalPaise || item.pricePaise * item.quantity)}</strong></div>)}</div><div className="list-row"><span>Subtotal</span><strong>{money(bill.subtotalPaise)}</strong></div>{bill.discountPaise > 0 && <div className="list-row"><span>Discount</span><strong>-{money(bill.discountPaise)}</strong></div>}{bill.taxPaise > 0 && <div className="list-row"><span>Tax</span><strong>{money(bill.taxPaise)}</strong></div>}{bill.packagingFeePaise > 0 && <div className="list-row"><span>Packaging</span><strong>{money(bill.packagingFeePaise)}</strong></div>}<div className="list-row"><strong>Amount paid</strong><strong>{money(bill.originalPaidPaise ?? bill.totalPaise)}</strong></div>{!!refunds.length && <section><h3>Refunds</h3>{refunds.map((refund: Any) => <div className="list-row" key={refund.id}><span>{refund.item_name_snapshot || "Refund"}<small>{humanRefundState(refund.status)}</small></span><strong>-{money(refund.amount_paise)}</strong></div>)}<div className="list-row"><strong>Net paid</strong><strong>{money(bill.netPaidPaise ?? bill.totalPaise)}</strong></div></section>}</div></div>;
+}
+
 function Customer({ slug, initialView = "hub" }: { slug: string; initialView?: "hub" | "menu" | "pay" }) {
   const [b, setB] = useState<Any | null>(null),
     [view, setView] = useState<"hub" | "menu" | "pay">(initialView),
@@ -2406,7 +2586,8 @@ function Customer({ slug, initialView = "hub" }: { slug: string; initialView?: "
     [instructions, setInstructions] = useState(""),
     [type, setType] = useState("takeaway"),
     [customerName, setCustomerName] = useState(""),
-    [customerPhone, setCustomerPhone] = useState(""),
+    [customerPhone, setCustomerPhone] = useState(() => sessionStorage.getItem(`customer-phone:${slug}`) || ""),
+    [whatsappMarketingConsent, setWhatsappMarketingConsent] = useState(false),
     [deliveryAddress, setDeliveryAddress] = useState(""),
     [landmark, setLandmark] = useState(""),
     [search, setSearch] = useState(""),
@@ -2422,7 +2603,16 @@ function Customer({ slug, initialView = "hub" }: { slug: string; initialView?: "
     [pending, setPending] = useState(
       () => !!localStorage.getItem(`pending:${slug}`),
     ),
-    [quickPayAmount, setQuickPayAmount] = useState("");
+    [quickPayAmount, setQuickPayAmount] = useState(""),
+    [paySheetOpen, setPaySheetOpen] = useState(false),
+    [paymentPhoneError, setPaymentPhoneError] = useState(""),
+    [paymentIntent, setPaymentIntent] = useState<{ amount?: number; linkedOrder: boolean } | null>(null),
+    [rewards, setRewards] = useState<Any[]>([]),
+    [rewardBusy, setRewardBusy] = useState(false),
+    [rewardError, setRewardError] = useState(""),
+    [selectedRewardId, setSelectedRewardId] = useState<string | null>(null),
+    [rewardQuote, setRewardQuote] = useState<Any | null>(null);
+  const [reviewOpen, setReviewOpen] = useState(false), [slideValue, setSlideValue] = useState(0);
   const loaded = useRef(false);
   const tableQuery = () => window.location.search || "";
   const event = (kind: string) =>
@@ -2433,6 +2623,11 @@ function Customer({ slug, initialView = "hub" }: { slug: string; initialView?: "
     setView(next);
     if (next === "menu") event("menu_view");
     window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+  function openPromotion(promotionId: string) {
+    const path = `/q/${encodeURIComponent(slug)}/promotion/${encodeURIComponent(promotionId)}${tableQuery()}`;
+    window.history.pushState({}, "", path);
+    window.location.reload();
   }
   useEffect(() => {
     const onPop = () => {
@@ -2523,7 +2718,7 @@ function Customer({ slug, initialView = "hub" }: { slug: string; initialView?: "
     change(configItem, 1);
     setConfigItem(null);
   }
-  async function submit() {
+  async function placeOrder() {
     if (!b) return;
     setBusy(true);
     setError("");
@@ -2544,6 +2739,8 @@ function Customer({ slug, initialView = "hub" }: { slug: string; initialView?: "
           tableToken: b.table?.publicToken,
           customerName,
           customerPhone,
+          whatsappMarketingConsent,
+          ...(selectedRewardId ? { rewardEntitlementId: selectedRewardId } : {}),
           deliveryAddress,
           landmark,
         };
@@ -2564,7 +2761,42 @@ function Customer({ slug, initialView = "hub" }: { slug: string; initialView?: "
       setBusy(false);
     }
   }
-  async function pay(amount?: number, linkedOrder = false) {
+  function submit() { setReviewOpen(true); }
+  async function loadRewards() {
+    const normalized = normalizeCustomerPhone(customerPhone);
+    if (!normalized) { setRewardError("Enter a valid mobile number to check rewards."); return; }
+    setRewardBusy(true); setRewardError("");
+    try {
+      const result = await api(`/public/${slug}/rewards`, "POST", { customerPhone: normalized });
+      setCustomerPhone(normalized);
+      setRewards(result.rewards || []);
+    } catch (e) { setRewardError((e as Error).message); }
+    finally { setRewardBusy(false); }
+  }
+  async function applyReward(reward: Any) {
+    const normalized = normalizeCustomerPhone(customerPhone);
+    if (!normalized || !lines.length) { setRewardError("Add an item and enter your mobile number first."); return; }
+    setRewardBusy(true); setRewardError("");
+    try {
+      const quote = await api(`/public/${slug}/rewards/quote`, "POST", {
+        customerPhone: normalized,
+        rewardEntitlementId: reward.id,
+        lines: lines.map((item: Any) => ({ itemId: item.id, quantity: cart[item.id] })),
+        orderType: type,
+      });
+      setSelectedRewardId(reward.id);
+      setRewardQuote(quote);
+    } catch (e) {
+      const message = (e as Error).message;
+      setRewardError(message.includes("already") || message.includes("no longer") ? "This reward has already been used." : message);
+    } finally { setRewardBusy(false); }
+  }
+  function requestPayment(amount?: number, linkedOrder = false) {
+    setPaymentPhoneError("");
+    setPaymentIntent({ amount, linkedOrder });
+    setPaySheetOpen(true);
+  }
+  async function pay(amount?: number, linkedOrder = false, phoneValue = customerPhone) {
     try {
       const key = `payment:${linkedOrder && order ? order.id : slug}`;
       let paymentKey = sessionStorage.getItem(key);
@@ -2575,14 +2807,34 @@ function Customer({ slug, initialView = "hub" }: { slug: string; initialView?: "
       const p = await api(
         linkedOrder && order ? `/orders/${order.id}/payments` : `/public/${slug}/payments`,
         "POST",
-        { idempotencyKey: paymentKey, ...(amount ? { amountPaise: amount } : {}) },
+        {
+          idempotencyKey: paymentKey,
+          customerPhone: phoneValue,
+          whatsappMarketingConsent,
+          ...(amount ? { amountPaise: amount } : {}),
+          ...(!linkedOrder && b?.table ? { tableId: b.table.id, tableToken: b.table.publicToken } : {}),
+        },
         order?.accessToken,
       );
       setPayment(p);
       event("payment_click");
     } catch (e) {
       setError((e as Error).message);
+      setPaymentPhoneError("We couldn't continue to payment. Please try again.");
+      setPaySheetOpen(true);
     }
+  }
+  async function continuePayment() {
+    const normalized = normalizeCustomerPhone(customerPhone);
+    if (!normalized) {
+      setPaymentPhoneError("Enter a valid 10-digit mobile number.");
+      return;
+    }
+    setCustomerPhone(normalized);
+    sessionStorage.setItem(`customer-phone:${slug}`, normalized);
+    setPaymentPhoneError("");
+    setPaySheetOpen(false);
+    if (paymentIntent) await pay(paymentIntent.amount, paymentIntent.linkedOrder, normalized);
   }
   const menuBusiness = !!b?.capabilities?.menu;
   const appearance = { ...appearanceDefaults, ...(b?.profile?.appearance || {}) };
@@ -2607,7 +2859,7 @@ function Customer({ slug, initialView = "hub" }: { slug: string; initialView?: "
   return (
     <div className="customer-wrap customer-branded" style={{ "--business-bg": appearance.backgroundColor, "--business-text": appearance.textColor, "--business-primary": appearance.primaryColor, "--business-secondary": appearance.secondaryColor, "--business-button": appearance.buttonColor, "--business-button-text": appearance.buttonTextColor } as any}>
       <header className="customer-top">
-        <a href={`/q/${encodeURIComponent(slug)}`} className="customer-brand-link" aria-label={`Back to ${b.name}`}><Brand /></a>
+        <div className="customer-brand-link" aria-label={`Back to ${b.name}`}><Brand /></div>
         <div className="customer-top-actions">
           {view === "menu" && <button className="customer-top-button" aria-label="Search menu" onClick={() => document.querySelector<HTMLInputElement>(".customer-menu-search")?.focus()}><Search size={18} /></button>}
           {lines.length > 0 && <button className="customer-top-button customer-top-cart" aria-label={`${lines.length} items in cart`} onClick={() => document.querySelector<HTMLElement>(".customer-cart-panel")?.scrollIntoView({ behavior: "smooth", block: "center" })}><ShoppingBag size={18} /><span>{lines.reduce((sum: number, i: Any) => sum + cart[i.id], 0)}</span></button>}
@@ -2638,7 +2890,7 @@ function Customer({ slug, initialView = "hub" }: { slug: string; initialView?: "
             {(() => {
               const configured = [
                 menuBusiness && !hiddenActions.includes("menu") && { type: "menu", node: <button className="menu-primary" onClick={() => { event("menu_click"); navigate("menu"); }}><span className="hub-icon"><Utensils size={23} aria-hidden="true" /></span><span><strong>View Menu</strong><small>Browse dishes, customise items and order</small></span><ArrowUpRight size={20} /></button> },
-                b.paymentAvailable && !hiddenActions.includes("pay") && { type: "pay", node: <button className="hub-action hub-pay" onClick={() => { event("pay_click"); navigate("pay"); }}><Wallet size={20} /><span>Pay now</span><ArrowUpRight size={16} /></button> },
+                b.paymentAvailable && !hiddenActions.includes("pay") && { type: "pay", node: <button className="hub-action hub-pay" onClick={() => { event("pay_click"); navigate("pay"); requestPayment(); }}><Wallet size={20} /><span>Pay now</span><ArrowUpRight size={16} /></button> },
                 b.profile.googleReviewUrl && !hiddenActions.includes("review") && { type: "review", node: <div className="review-cta"><div><Star size={24} fill="currentColor" /><span><strong>Enjoyed your experience?</strong><small>Help others discover us.</small></span></div>{external("review_click", b.profile.googleReviewUrl, "Leave a Google Review", Star)}</div> },
                 b.profile.instagramUrl && !hiddenActions.includes("instagram") && { type: "instagram", node: external("instagram_click", b.profile.instagramUrl, "Instagram", Globe, "social-action") },
                 b.profile.facebookUrl && !hiddenActions.includes("facebook") && { type: "facebook", node: external("facebook_click", b.profile.facebookUrl, "Facebook", Globe, "social-action") },
@@ -2651,10 +2903,13 @@ function Customer({ slug, initialView = "hub" }: { slug: string; initialView?: "
                 b.profile.websiteUrl && !hiddenActions.includes("website") && { type: "website", node: external("website_click", b.profile.websiteUrl, "Website", Globe) },
               ].filter(Boolean) as { type: string; node: React.ReactNode }[];
               const configuredOrder = [...(appearance.actionOrder || []), ...configured.map((x) => x.type).filter((x) => !(appearance.actionOrder || []).includes(x))];
-              return configuredOrder.map((type) => configured.find((x) => x.type === type)?.node || null);
+              return configuredOrder.map((type) => <React.Fragment key={type}>{configured.find((x) => x.type === type)?.node || null}</React.Fragment>);
             })()}
             {b.profile.actions.map((a: Any, i: number) => <a className="hub-action" href={a.url} rel="noopener noreferrer" target="_blank" onClick={() => event("action_tap")} key={i}><LinkIcon size={18} /><span>{a.label}</span><ArrowUpRight size={16} /></a>)}
           </section>
+          <ServiceHub slug={slug} business={b} />
+          {!!b.promotions?.length && <section className="customer-feature-strip" aria-label="Featured offers"><div className="customer-feature-heading"><Badge tone="amber">SPECIAL OFFERS</Badge><span>Available now</span></div><div className="customer-feature-grid">{b.promotions.slice(0, 3).map((promotion: Any) => <button type="button" className="customer-feature-card" key={promotion.id} onClick={() => openPromotion(promotion.id)}><strong>{promotion.title}</strong><p>{promotion.description || "A limited-time offer from this business."}</p><small>Ends {formatDate(promotion.endsAt)}</small><span className="customer-feature-link">See offer <ArrowUpRight size={14} /></span></button>)}</div></section>}
+          {!!b.challenges?.length && <section className="customer-feature-strip" aria-label="Customer challenges"><div className="customer-feature-heading"><Badge tone="green">CHALLENGES</Badge><span>Come back for more</span></div><div className="customer-feature-grid">{b.challenges.slice(0, 3).map((challenge: Any) => <article className="customer-feature-card challenge" key={challenge.id}><strong>{challenge.customer_title}</strong><p>{challenge.description || `Complete ${challenge.target} to unlock the reward.`}</p><small>Ends {new Date(challenge.endsAt).toLocaleDateString()}</small></article>)}</div></section>}
         </>
       )}
       {view !== "hub" && <button className="hub-back" onClick={() => navigate("hub")}><ArrowLeft size={17} /> {b.name}</button>}
@@ -2662,7 +2917,7 @@ function Customer({ slug, initialView = "hub" }: { slug: string; initialView?: "
         <section className="card quick-pay">
           <Badge>QUICK PAY</Badge><h2>Pay {b.name}</h2><p>Enter an amount, then choose your preferred UPI app.</p>
           <label className="field"><span>Amount</span><input inputMode="decimal" placeholder="₹ 0" value={quickPayAmount} onChange={(e) => setQuickPayAmount(e.target.value)} /></label>
-          <button className="primary wide" disabled={!Number(quickPayAmount) || Number(quickPayAmount) <= 0} onClick={() => pay(Math.round(Number(quickPayAmount) * 100))}><Wallet size={18} /> Continue to payment</button>
+          <button className="primary wide" disabled={!Number(quickPayAmount) || Number(quickPayAmount) <= 0} onClick={() => requestPayment(Math.round(Number(quickPayAmount) * 100))}><Wallet size={18} /> Continue to payment</button>
           <small>Opening a payment app does not confirm payment. Check the payee and amount.</small>
         </section>
       )}
@@ -2678,6 +2933,8 @@ function Customer({ slug, initialView = "hub" }: { slug: string; initialView?: "
           </div>
         </div>
       )}
+      {view === "menu" && !!b.promotions?.length && <section className="customer-menu-featured" aria-label="Featured offers"><div className="customer-feature-heading"><Badge tone="amber">SPECIAL OFFERS</Badge><span>Live on this menu</span></div>{b.promotions.slice(0, 3).map((promotion: Any) => <button type="button" className="customer-menu-offer" key={promotion.id} onClick={() => openPromotion(promotion.id)}><div><strong>{promotion.title}</strong><small>{promotion.description}</small></div><span>See offer <ArrowUpRight size={14} /></span></button>)}</section>}
+      {view === "menu" && !!b.challenges?.length && <section className="customer-menu-featured" aria-label="Challenges"><div className="customer-feature-heading"><Badge tone="green">CHALLENGES</Badge><span>Make your next visit count</span></div>{b.challenges.slice(0, 3).map((challenge: Any) => <div className="customer-menu-offer challenge" key={challenge.id}><div><strong>{challenge.customer_title}</strong><small>{challenge.description}</small></div><span>{challenge.target} goal</span></div>)}</section>}
       {payment && (
         <section className="card">
           <h2>Continue to your UPI app</h2>
@@ -2696,6 +2953,20 @@ function Customer({ slug, initialView = "hub" }: { slug: string; initialView?: "
           </p>
           <Badge>Confirmation pending</Badge>
         </section>
+      )}
+      {paySheetOpen && paymentIntent && (
+        <div className="customer-pay-sheet-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setPaySheetOpen(false); }}>
+          <section className="customer-pay-sheet" role="dialog" aria-modal="true" aria-labelledby="customer-pay-title">
+            <div className="customer-pay-sheet-handle" />
+            <button className="customer-pay-sheet-close" type="button" aria-label="Close payment contact form" onClick={() => setPaySheetOpen(false)}>×</button>
+            <Badge>SECURE PAYMENT CONTEXT</Badge>
+            <h2 id="customer-pay-title">Continue to pay</h2>
+            <p>Enter your mobile number so the business can identify your payment.</p>
+            <label className="field customer-phone-field"><span>Mobile number</span><div className="customer-phone-input"><strong>+91</strong><input autoFocus inputMode="tel" autoComplete="tel" placeholder="98765 43210" value={customerPhone.replace(/^\+91/, "")} onChange={(event) => { setCustomerPhone(event.target.value); setPaymentPhoneError(""); }} /></div>{paymentPhoneError && <small className="field-message error-text" role="alert">{paymentPhoneError}</small>}<small>Used to identify your payment and order with this business.</small></label>
+            <label className="customer-marketing-consent"><input type="checkbox" checked={whatsappMarketingConsent} onChange={(event) => setWhatsappMarketingConsent(event.target.checked)} /><span><strong>Send me offers and updates from {b?.name || "this business"} on WhatsApp</strong><small>Optional. You can unsubscribe anytime.</small></span></label>
+            <button className="primary wide" type="button" onClick={() => void continuePayment()}>Continue <ArrowUpRight size={17} /></button>
+          </section>
+        </div>
       )}
       {order ? (
         <section className="card spaced">
@@ -2729,7 +3000,7 @@ function Customer({ slug, initialView = "hub" }: { slug: string; initialView?: "
           {order.payment_state === "pending" &&
             order.payment_method === "upi" &&
             !["completed", "cancelled", "rejected"].includes(order.state) && (
-              <button className="primary" onClick={() => pay(undefined, true)}>
+              <button className="primary" onClick={() => requestPayment(undefined, true)}>
                 Continue to payment
               </button>
             )}
@@ -2834,6 +3105,13 @@ function Customer({ slug, initialView = "hub" }: { slug: string; initialView?: "
               />
               {type !== "dine_in" && <Field title="Name" value={customerName} disabled={pending} onChange={(e: any) => setCustomerName(e.target.value)} />}
               {type !== "dine_in" && <Field title="Phone number" inputMode="tel" value={customerPhone} disabled={pending} onChange={(e: any) => setCustomerPhone(e.target.value)} />}
+              {customerPhone && <label className="customer-marketing-consent"><input type="checkbox" disabled={pending} checked={whatsappMarketingConsent} onChange={(event) => setWhatsappMarketingConsent(event.target.checked)} /><span><strong>Send me offers and updates from {b.name} on WhatsApp</strong><small>Optional. You can unsubscribe anytime.</small></span></label>}
+              <div className="customer-rewards-panel">
+                <div className="customer-rewards-heading"><span><Gift size={17} /> Rewards</span><button type="button" className="text-button" disabled={rewardBusy || pending} onClick={() => void loadRewards()}>{rewardBusy ? "Checking…" : "Check rewards"}</button></div>
+                {rewardError && <small className="field-message error-text" role="alert">{rewardError}</small>}
+                {rewards.map((reward: Any) => <div className={`customer-reward-card ${reward.status}`} key={reward.id}><div><strong>{reward.status === "available" ? "Reward unlocked" : reward.status === "redeemed" ? "Reward used" : reward.status === "expired" ? "Reward expired" : "Reward unavailable"}</strong><small>{reward.challengeTitle || "Challenge reward"} · {reward.rewardType === "flat_discount" ? `${money(reward.rewardValue)} off your next eligible order` : `${Number(reward.rewardValue) / 100}% off your next eligible order`}</small></div>{reward.status === "available" && <button type="button" className="secondary" disabled={rewardBusy || pending} onClick={() => void applyReward(reward)}>{rewardBusy && selectedRewardId === reward.id ? "Applying…" : selectedRewardId === reward.id ? "Applied" : "Use reward"}</button>}</div>)}
+                {rewardQuote && <div className="customer-reward-summary"><span>Subtotal <strong>{money(rewardQuote.subtotalPaise)}</strong></span><span>Reward <strong>−{money(rewardQuote.rewardDiscountPaise)}</strong></span><span>Total <strong>{money(rewardQuote.totalPaise)}</strong></span><small>Reward applied</small></div>}
+              </div>
               {type === "delivery" && <>
                 <Field title="Delivery address" value={deliveryAddress} disabled={pending} onChange={(e: any) => setDeliveryAddress(e.target.value)} />
                 <Field title="Landmark (optional)" value={landmark} disabled={pending} onChange={(e: any) => setLandmark(e.target.value)} />
@@ -2875,11 +3153,7 @@ function Customer({ slug, initialView = "hub" }: { slug: string; initialView?: "
                   }
                 onClick={submit}
               >
-                {busy
-                  ? "Sending…"
-                  : pending
-                    ? "Retry / recover order"
-                    : `Submit order · ${money(total)}`}
+                {busy ? "Reviewing…" : pending ? "Retry / recover order" : `Review order · ${money(rewardQuote?.totalPaise ?? total)}`}
               </button>
               <small>
                 Orders require merchant acceptance. Retries use the same order
@@ -2913,6 +3187,16 @@ function Customer({ slug, initialView = "hub" }: { slug: string; initialView?: "
             {configItem.variants?.length > 0 && <fieldset><legend>Size / variant *</legend>{configItem.variants.map((v: Any) => <label className="choice" key={v.id}><input type="radio" name="variant" checked={configVariant === v.id} onChange={() => setConfigVariant(v.id)} />{v.name}<strong>{money(v.price_paise)}</strong></label>)}</fieldset>}
             {configItem.modifierGroups?.map((g: Any) => <fieldset key={g.id}><legend>{g.name} {g.required ? "*" : ""}</legend>{g.modifiers.map((m: Any) => <label className="choice" key={m.id}><input type={g.max_selection === 1 ? "radio" : "checkbox"} name={g.id} checked={configModifiers.includes(m.id)} onChange={(e) => setConfigModifiers(e.target.checked ? [...configModifiers, m.id] : configModifiers.filter((id) => id !== m.id))} />{m.name}<strong>+{money(m.price_paise)}</strong></label>)}</fieldset>)}
             <button className="primary wide" onClick={addConfigured}>Add to cart</button>
+          </div>
+        </div>
+      )}
+      {reviewOpen && (
+        <div className="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="order-review-title">
+          <div className="config-sheet card order-review-modal">
+            <div className="card-heading"><div><Badge>REVIEW ORDER</Badge><h2 id="order-review-title">Place this order?</h2></div><button className="text-button" onClick={() => { setReviewOpen(false); setSlideValue(0); }}>Close</button></div>
+            <p>{b.table ? <><strong>{b.table.name}</strong> · </> : "Takeaway · "}{lines.reduce((sum: number, item: Any) => sum + cart[item.id], 0)} items · <strong>{money(rewardQuote?.totalPaise ?? total)}</strong></p>
+            <div className="button-row"><button className="secondary" onClick={() => { setReviewOpen(false); setSlideValue(0); }}>Cancel</button><button className="primary" onClick={() => { setReviewOpen(false); void placeOrder(); }} disabled={busy}>{busy ? "Placing order…" : "Place order"}</button></div>
+            <label className="slide-place-order"><span>On touch devices, slide to place</span><input aria-label="Slide to place order" type="range" min="0" max="100" value={slideValue} onChange={(e) => { const value = Number(e.target.value); setSlideValue(value); if (value >= 90) { setReviewOpen(false); setSlideValue(0); void placeOrder(); } }} /></label>
           </div>
         </div>
       )}
@@ -3078,10 +3362,9 @@ function Recovery({ mode }: any) {
   const [message, setMessage] = useState(""),
     [error, setError] = useState("");
   return (
-    <div className="customer-wrap">
-      <Brand />
+    <div className="auth auth-v2 recovery-shell">
       <form
-        className="card spaced"
+        className="auth-form auth-card auth-panel recovery-card"
         onSubmit={async (e) => {
           e.preventDefault();
           const data = Object.fromEntries(new FormData(e.currentTarget));
@@ -3106,6 +3389,8 @@ function Recovery({ mode }: any) {
           }
         }}
       >
+        <Brand />
+        <div className="auth-kicker">{mode === "verify" ? "EMAIL CONFIRMATION" : "ACCOUNT SECURITY"}</div>
         <h1>
           {mode === "recovery"
             ? "Recover your account"
@@ -3135,9 +3420,7 @@ function Recovery({ mode }: any) {
             </button>
           </>
         )}
-        <p>
-          <a href="/">Back to sign in</a>
-        </p>
+        <p className="recovery-back"><a href="/login">Back to sign in</a></p>
       </form>
     </div>
   );

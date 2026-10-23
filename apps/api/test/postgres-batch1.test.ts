@@ -5,7 +5,7 @@ import { createApp } from "../src/app.js";
 import { envSchema } from "../src/config.js";
 import { createPostgresDatabase, resetPostgresPoolForTests } from "../src/async-db.js";
 
-const connectionString = process.env.POSTGRES_TEST_URL || process.env.DIRECT_URL;
+const connectionString = process.env.POSTGRES_TEST_URL;
 
 test("PostgreSQL Batch 1 auth, sessions, businesses and tenant isolation", { skip: !connectionString }, async () => {
   const rawSqlite = openDb(":memory:");

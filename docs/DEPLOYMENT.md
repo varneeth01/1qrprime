@@ -50,7 +50,6 @@ PUBLIC_ORIGIN=https://1qrprime.com
 API_PUBLIC_ORIGIN=https://api.1qrprime.com
 ADMIN_ORIGIN=https://admin.1qrprime.com
 DATABASE_URL=postgresql://...
-DIRECT_URL=postgresql://...
 STORAGE_DRIVER=vercel-blob
 BLOB_READ_WRITE_TOKEN=...
 ```
@@ -94,7 +93,7 @@ QR regeneration.
 
 ## Verification
 
-After DNS, Vercel, TLS, Neon PostgreSQL, and Blob are provisioned, verify:
+After DNS, TLS, private PostgreSQL, and object storage are provisioned, verify:
 
 ```sh
 curl -fsS https://api.1qrprime.com/api/health

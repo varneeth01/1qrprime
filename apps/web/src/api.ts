@@ -101,4 +101,26 @@ export const money = (paise: number) =>
     paise / 100,
   );
 
-export const label = (s: string) => s.replaceAll("_", " ");
+const friendlyLabels: Record<string, string> = {
+  submitted: "New",
+  accepted: "Accepted",
+  preparing: "Preparing",
+  ready: "Ready",
+  served: "Served",
+  completed: "Closed",
+  closed: "Closed",
+  rejected: "Rejected",
+  cancelled: "Cancelled",
+  pending: "Payment pending",
+  paid: "Paid",
+  confirmation_pending: "Confirmation pending",
+  captured: "Paid",
+  verified: "Verified",
+  dine_in: "Dine in",
+  takeaway: "Takeaway",
+  customer_requested: "Customer requested",
+  item_cancelled: "Item cancelled",
+  payment_pending: "Payment pending",
+  manual_required: "Manual refund required",
+};
+export const label = (s: string) => friendlyLabels[s] || s.replaceAll("_", " ").replace(/\b\w/g, (character) => character.toUpperCase());

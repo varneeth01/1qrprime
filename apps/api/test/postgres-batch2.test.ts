@@ -7,7 +7,7 @@ import { envSchema } from "../src/config.js";
 import { createPostgresDatabase, resetPostgresPoolForTests } from "../src/async-db.js";
 import { MenuRepository } from "../src/repositories/menu-repository.js";
 
-const connectionString = process.env.POSTGRES_TEST_URL || process.env.DIRECT_URL;
+const connectionString = process.env.POSTGRES_TEST_URL;
 
 test("PostgreSQL Batch 2 menu, modifiers, tables and tenant isolation", { skip: !connectionString }, async () => {
   const rawSqlite = openDb(":memory:");

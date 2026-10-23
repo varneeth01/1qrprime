@@ -342,6 +342,10 @@ export default function App() {
   const l = me?.locations.find((x: Row) => x.id === lid),
     tenant =
       me?.tenants.find((t: Row) => t.id === l?.tenant_id) || me?.tenants[0];
+  const greeting = (() => {
+    const hour = new Date().getHours();
+    return hour < 12 ? "Good morning" : hour < 18 ? "Good afternoon" : "Good evening";
+  })();
   const productState = resolveProductState({ ...me, activeLocationId: l?.id });
   useEffect(() => {
     if (!canRenderMerchantNavigation(productState)) setTab(OwnerRoutes.Home);
@@ -350,7 +354,7 @@ export default function App() {
     return (
       <View style={s.bootScreen}>
         <View style={s.authBrand}><Text style={s.authBrandMark}>▦</Text><Text style={s.authBrandText}>1QR <Text style={s.authBrandMuted}>Prime</Text></Text></View>
-        <Text style={s.bootTitle}>Preparing your workspace</Text>
+        <Text style={s.bootTitle}>Preparing your business</Text>
         <ActivityIndicator accessibilityLabel="Loading" color="#ffffff" />
       </View>
     );
@@ -368,12 +372,12 @@ export default function App() {
       ) : !me ? (
         <View style={s.loading}>
           <Text style={s.loadingTitle}>Connecting to 1QR Prime</Text>
-          <Hint>Loading your business workspace…</Hint>
+          <Hint>Loading your business…</Hint>
           <Button title="Retry connection" onPress={() => run(refresh)} />
         </View>
       ) : !canRenderMerchantNavigation(productState) ? (
         <ScrollView style={s.content} contentContainerStyle={{ paddingBottom: 40 }}>
-          {productState === "AUTHENTICATED_ACCOUNT_SETUP" ? <CreateLocation me={me} tenant={tenant} request={request} run={run} done={async () => { await refresh(); setTab(OwnerRoutes.Home); }} onSignOut={resetSession} token={token} initial={l} /> : productState === "PRIME_PAYMENT_REQUIRED" ? <PrimePaymentRequired /> : salesEditing ? <CreateLocation me={me} tenant={tenant} request={request} run={run} done={async () => { setSalesEditing(false); await refresh(); }} onSalesSubmitted={async () => { setSalesEditing(false); await refresh(); }} onSignOut={resetSession} token={token} initial={l} startAt={0} /> : <SalesPendingMobile l={l} me={me} onEdit={() => setSalesEditing(true)} onSignOut={resetSession} />}
+          {productState === "EMAIL_VERIFICATION_REQUIRED" ? <NativeVerification email={me.email} onSignOut={resetSession} request={request} run={run} /> : productState === "AUTHENTICATED_ACCOUNT_SETUP" ? <CreateLocation me={me} tenant={tenant} request={request} run={run} done={async () => { await refresh(); setTab(OwnerRoutes.Home); }} onSignOut={resetSession} token={token} initial={l} /> : productState === "PRIME_PAYMENT_REQUIRED" ? <PrimePaymentRequired /> : salesEditing ? <CreateLocation me={me} tenant={tenant} request={request} run={run} done={async () => { setSalesEditing(false); await refresh(); }} onSalesSubmitted={async () => { setSalesEditing(false); await refresh(); }} onSignOut={resetSession} token={token} initial={l} startAt={0} /> : <SalesPendingMobile l={l} me={me} onEdit={() => setSalesEditing(true)} onSignOut={resetSession} />}
         </ScrollView>
       ) : (
         <>
@@ -430,7 +434,7 @@ export default function App() {
                 {tab === OwnerRoutes.Home && (
                   <>
                     <Text style={s.kicker}>{label(l.category).toUpperCase()}</Text>
-                    <Title>Good day</Title>
+                    <Title>{greeting}</Title>
                     <View style={s.businessHeader}>
                       <View style={{ flex: 1 }}>
                         <Text style={s.businessName}>{l.name}</Text>
@@ -632,8 +636,7 @@ export default function App() {
 function Auth({ login, run, busy, clearError, rateLimitSeconds = 0 }: any) {
   const [register, setRegister] = useState(false),
     [email, setEmail] = useState(""),
-    [password, setPassword] = useState(""),
-    [name, setName] = useState("");
+    [password, setPassword] = useState("");
   return (
     <KeyboardAvoidingView style={s.authScreen} behavior={Platform.OS === "ios" ? "padding" : "height"}>
     <ScrollView style={s.authScroll} contentContainerStyle={s.authContent} keyboardShouldPersistTaps="handled">
@@ -644,9 +647,6 @@ function Auth({ login, run, busy, clearError, rateLimitSeconds = 0 }: any) {
       </View>
       <Card style={s.authCard}>
         {rateLimitSeconds > 0 && <Text accessibilityRole="alert" style={s.authRateLimit}>Too many attempts. Try again in {rateLimitSeconds} seconds.</Text>}
-        {register && (
-          <Input title="Business name" value={name} onChangeText={(value: string) => { setName(value); clearError(); }} />
-        )}
         <Input
           title="Email"
           value={email}
@@ -672,7 +672,6 @@ function Auth({ login, run, busy, clearError, rateLimitSeconds = 0 }: any) {
               login(register, {
                 email,
                 password,
-                ...(register ? { name } : {}),
               }),
             )
           }
@@ -689,6 +688,9 @@ function Auth({ login, run, busy, clearError, rateLimitSeconds = 0 }: any) {
     </ScrollView>
     </KeyboardAvoidingView>
   );
+}
+function NativeVerification({ email, onSignOut, request, run }: any) {
+  return <View style={s.authScreen}><ScrollView contentContainerStyle={s.authContent} keyboardShouldPersistTaps="handled"><View style={s.authBrand}><Text style={s.authBrandMark}>▦</Text><Text style={s.authBrandText}>1QR <Text style={s.authBrandMuted}>Prime</Text></Text></View><Card style={s.authCard}><Text style={s.kicker}>EMAIL VERIFICATION</Text><Title>Verify your email</Title><Hint>We sent a verification link to:</Hint><Text style={s.itemTitle}>{email}</Text><Button title="Resend verification email" onPress={() => run(async () => { await request("/auth/request-verification", "POST"); Alert.alert("Check your email", "A new verification link has been sent."); })} /><Button title="Sign out" secondary onPress={onSignOut} /></Card></ScrollView></View>;
 }
 function CreateLocation({ me, tenant, request, run, done, token, initial, startAt, onSalesSubmitted, onSignOut }: any) {
   const [name, setName] = useState(initial?.name || ""),
@@ -774,7 +776,7 @@ function OwnerPortfolio({ me, request, setLid, setTab }: any) {
 }
 
 function BusinessList({ me, setLid, setTab }: any) {
-  return <><Text style={s.kicker}>WORKSPACE</Text><Title>Businesses</Title><Hint>Choose the location you want to operate.</Hint>{me.locations.map((location: Row) => <Pressable key={location.id} style={s.businessRow} onPress={() => { setLid(location.id); setTab(OwnerRoutes.Home); }}><View style={s.businessMark}><Text style={s.businessMarkText}>{location.name.slice(0, 1)}</Text></View><View style={{ flex: 1 }}><Text style={s.itemTitle}>{location.name}</Text><Hint>{location.profile?.address || label(location.category)}</Hint></View><Text style={s.openPill}>{location.published ? "LIVE" : "DRAFT"}</Text></Pressable>)}<Button title="+ Add business" onPress={() => setTab(OwnerRoutes.New)} /></>;
+  return <><Text style={s.kicker}>BUSINESSES</Text><Title>Your businesses</Title><Hint>Choose the location you want to operate.</Hint>{me.locations.map((location: Row) => <Pressable key={location.id} style={s.businessRow} onPress={() => { setLid(location.id); setTab(OwnerRoutes.Home); }}><View style={s.businessMark}><Text style={s.businessMarkText}>{location.name.slice(0, 1)}</Text></View><View style={{ flex: 1 }}><Text style={s.itemTitle}>{location.name}</Text><Hint>{location.profile?.address || label(location.category)}</Hint></View><Text style={s.openPill}>{location.published ? "LIVE" : "DRAFT"}</Text></Pressable>)}<Button title="+ Add business" onPress={() => setTab(OwnerRoutes.New)} /></>;
 }
 
 function OwnerProfile({ me, request, run }: any) {
@@ -783,7 +785,7 @@ function OwnerProfile({ me, request, run }: any) {
     <Text style={s.kicker}>ACCOUNT</Text><Title>Profile</Title>
     <View style={s.profileHero}><View style={s.profileAvatar}><Text style={s.profileAvatarText}>{(me.email || "?")[0].toUpperCase()}</Text></View><View><Text style={s.profileName}>{me.email?.split("@")[0] || "Owner"}</Text><Text style={s.profileRole}>{label(role)} · {me.locations.length} businesses</Text><Text style={s.profileEmail}>{me.email}</Text></View></View>
     <Text style={s.sectionLabel}>SECURITY</Text><View style={s.settingsSection}><Pressable style={s.settingsRow} onPress={() => run(async () => { await request("/auth/request-verification", "POST"); Alert.alert("Check your email", "A verification link has been sent if your account requires one."); })}><View><Text style={s.itemTitle}>Email verification</Text><Hint>{me.emailVerified ? "Verified" : "Verification available"}</Hint></View><Text style={s.arrow}>→</Text></Pressable><Pressable style={s.settingsRow} onPress={() => Linking.openURL(`${WEB}/recovery`)}><View><Text style={s.itemTitle}>Change password</Text><Hint>Use secure account recovery</Hint></View><Text style={s.arrow}>→</Text></Pressable></View>
-    <Text style={s.sectionLabel}>SUPPORT & PRIVACY</Text><View style={s.settingsSection}><Pressable style={s.settingsRow} onPress={() => Linking.openURL(`${WEB}/support`)}><View><Text style={s.itemTitle}>Help & support</Text><Hint>Get help with your workspace</Hint></View><Text style={s.arrow}>→</Text></Pressable><Pressable style={s.settingsRow} onPress={() => Linking.openURL(`${WEB}/privacy`)}><View><Text style={s.itemTitle}>Privacy policy</Text><Hint>How 1QR Prime handles account data</Hint></View><Text style={s.arrow}>→</Text></Pressable></View>
+    <Text style={s.sectionLabel}>SUPPORT & PRIVACY</Text><View style={s.settingsSection}><Pressable style={s.settingsRow} onPress={() => Linking.openURL(`${WEB}/support`)}><View><Text style={s.itemTitle}>Help & support</Text><Hint>Get help with your business</Hint></View><Text style={s.arrow}>→</Text></Pressable><Pressable style={s.settingsRow} onPress={() => Linking.openURL(`${WEB}/privacy`)}><View><Text style={s.itemTitle}>Privacy policy</Text><Hint>How 1QR Prime handles account data</Hint></View><Text style={s.arrow}>→</Text></Pressable></View>
     <Hint>Account deletion remains under Account & settings to keep it separate from everyday profile actions.</Hint>
   </>;
 }
@@ -798,7 +800,7 @@ function NativeInfoScreen({ title, detail, request, path }: any) {
     return () => { mounted = false; };
   }, [path, request]);
   return <>
-    <Text style={s.kicker}>WORKSPACE</Text>
+    <Text style={s.kicker}>MORE TOOLS</Text>
     <Title>{title}</Title>
     <Hint>{detail}</Hint>
     {loading ? <Card><ActivityIndicator color="#ffffff" /><Hint>Loading {title.toLowerCase()}…</Hint></Card> : <Card><Text style={s.itemTitle}>{Array.isArray(data) ? `${data.length} records available` : "Connected"}</Text><Hint>Data is scoped to the selected business.</Hint><Button title="Refresh" secondary onPress={() => { setLoading(true); request(path).then(setData).catch(() => {}).finally(() => setLoading(false)); }} /></Card>}
@@ -819,7 +821,7 @@ function NativeStaff({ tenant, request, run }: any) {
 
 function NativeSupport() {
   return <>
-    <Text style={s.kicker}>HELP</Text><Title>Support</Title><Hint>Get help with your 1QR Prime workspace.</Hint>
+    <Text style={s.kicker}>HELP</Text><Title>Support</Title><Hint>Get help with your 1QR Prime business.</Hint>
     <Card><Text style={s.itemTitle}>Need help?</Text><Hint>Open the support center for account, QR, menu and order assistance.</Hint><Button title="Open support center" onPress={() => Linking.openURL(`${WEB}/support`)} /><Button title="Privacy policy" secondary onPress={() => Linking.openURL(`${WEB}/privacy`)} /></Card>
   </>;
 }
@@ -843,10 +845,10 @@ function MoreMenu({ setTab, l }: any) {
     [OwnerRoutes.Staff, "Manage your team", "Staff"],
     [OwnerRoutes.Profile, "Your owner account and security", "Profile"],
     [OwnerRoutes.Settings, "Notifications, privacy and settings", "Settings"],
-    [OwnerRoutes.Support, "Get help with your workspace", "Support"],
+    [OwnerRoutes.Support, "Get help with your business", "Support"],
   ];
   return <>
-    <Text style={s.kicker}>WORKSPACE</Text>
+    <Text style={s.kicker}>BUSINESS TOOLS</Text>
     <Title>More tools</Title>
     {entries.map(([route, detail, title]) => <Pressable key={route} accessibilityRole="button" accessibilityLabel={title} style={s.moreRow} onPress={() => setTab(route)}><View style={{ flex: 1 }}><Text style={s.moreTitle}>{title}</Text><Text style={s.moreDetail}>{detail}</Text></View><Text style={s.arrow}>→</Text></Pressable>)}
     <Card><Text style={s.itemTitle}>Preview diagnostics</Text><Hint>{environmentLabel} · {API_BASE}</Hint><Button title="Check API" secondary onPress={() => Linking.openURL(`${API_BASE}/health`)} /></Card>

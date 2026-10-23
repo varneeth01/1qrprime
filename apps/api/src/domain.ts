@@ -65,6 +65,21 @@ export const link = z
   .string()
   .max(2048)
   .refine(safeLink, "Use a public HTTPS URL or telephone link");
+const safeMenuImage = (value: string) => {
+  if (safeLink(value)) return true;
+  try {
+    const u = new URL(value);
+    return (
+      ["http:", "https:"].includes(u.protocol) &&
+      /^(localhost|127\.0\.0\.1)$/.test(u.hostname) &&
+      /^\/api\/media\/[a-zA-Z0-9_-]+\/[a-zA-Z0-9_-]+\.webp$/.test(u.pathname) &&
+      !u.search &&
+      !u.hash
+    );
+  } catch {
+    return false;
+  }
+};
 const hexColor = z.string().regex(/^#[0-9a-fA-F]{6}$/, "Use a six-digit hex color");
 export const appearanceSchema = z.object({
   themePreset: z.enum(["minimal", "midnight", "warm", "elegant", "bold", "custom"]).default("minimal"),
@@ -122,7 +137,7 @@ export const itemSchema = z.object({
   section: z.string().min(1).max(60).default("Menu"),
   price_paise: z.number().int().min(0).max(10000000),
   available: z.boolean().default(true),
-  image: link.nullable().optional(),
+  image: z.string().max(2048).nullable().optional().refine((value) => !value || safeMenuImage(value), "Use a public image URL"),
   categoryId: z.uuid().nullable().optional(),
   displayOrder: z.number().int().min(0).max(100000).default(0),
   discountedPricePaise: z.number().int().min(0).max(10000000).nullable().optional(),
@@ -140,7 +155,8 @@ export const transitions: Record<string, string[]> = {
   submitted: ["accepted", "rejected", "cancelled"],
   accepted: ["preparing", "cancelled"],
   preparing: ["ready", "cancelled"],
-  ready: ["completed", "cancelled"],
+  ready: ["served", "completed", "cancelled"],
+  served: ["closed", "completed"],
   completed: [],
   rejected: [],
   cancelled: [],

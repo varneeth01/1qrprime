@@ -1,0 +1,17 @@
+ALTER TABLE locations ADD COLUMN cancellation_window_minutes INTEGER NOT NULL DEFAULT 5;
+ALTER TABLE orders ADD COLUMN preparation_started_at TEXT;
+ALTER TABLE orders ADD COLUMN served_at TEXT;
+ALTER TABLE orders ADD COLUMN closed_at TEXT;
+ALTER TABLE orders ADD COLUMN bill_requested_at TEXT;
+ALTER TABLE orders ADD COLUMN paid_at TEXT;
+ALTER TABLE order_items ADD COLUMN placed_at TEXT;
+ALTER TABLE order_items ADD COLUMN cancellable_until TEXT;
+ALTER TABLE order_items ADD COLUMN cancelled_quantity INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE order_items ADD COLUMN cancelled_at TEXT;
+ALTER TABLE order_items ADD COLUMN cancelled_by TEXT;
+ALTER TABLE order_items ADD COLUMN cancellation_reason TEXT;
+UPDATE order_items SET placed_at=COALESCE(placed_at,(SELECT created_at FROM orders WHERE orders.id=order_items.order_id)), cancellable_until=COALESCE(cancellable_until,datetime((SELECT created_at FROM orders WHERE orders.id=order_items.order_id), '+' || COALESCE((SELECT cancellation_window_minutes FROM locations JOIN orders ON orders.location_id=locations.id WHERE orders.id=order_items.order_id),5) || ' minutes'));
+CREATE INDEX order_items_cancellation ON order_items(order_id,cancellable_until,cancelled_quantity);
+CREATE TABLE item_cancellation_idempotency (id TEXT PRIMARY KEY, location_id TEXT NOT NULL REFERENCES locations(id) ON DELETE CASCADE, order_id TEXT NOT NULL REFERENCES orders(id) ON DELETE CASCADE, idempotency_key TEXT NOT NULL, response_json TEXT NOT NULL, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, UNIQUE(location_id,idempotency_key));
+CREATE TABLE refunds (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL REFERENCES tenants(id) ON DELETE CASCADE, location_id TEXT NOT NULL REFERENCES locations(id) ON DELETE CASCADE, order_id TEXT NOT NULL REFERENCES orders(id) ON DELETE CASCADE, order_item_id TEXT REFERENCES order_items(id) ON DELETE SET NULL, payment_id TEXT, provider_payment_id TEXT, amount_paise INTEGER NOT NULL, currency TEXT NOT NULL DEFAULT 'INR', status TEXT NOT NULL CHECK(status IN ('REQUESTED','PROCESSING','SUCCEEDED','FAILED','MANUAL_REQUIRED')), reason TEXT NOT NULL, note TEXT NOT NULL DEFAULT '', requested_by TEXT NOT NULL REFERENCES users(id), approved_by TEXT REFERENCES users(id), created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, processed_at TEXT);
+CREATE INDEX refunds_order ON refunds(order_id,created_at);

@@ -5,9 +5,77 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { openDb } from "../src/db.js";
-import { createApp, normalizePaymentAmount } from "../src/app.js";
+import { createApp, normalizeCustomerPhone, normalizePaymentAmount } from "../src/app.js";
+import { createSqliteDatabase } from "../src/async-db.js";
+import { MarketingRepository } from "../src/repositories/marketing-repository.js";
+import { MarketingWorker } from "../src/marketing-worker.js";
+import { MockWhatsAppProvider } from "../src/whatsapp.js";
 import { envSchema } from "../src/config.js";
 const cfg = envSchema.parse({ NODE_ENV: "test" });
+test("customer payment phones normalize to one Indian representation", () => {
+  assert.equal(normalizeCustomerPhone("98765 43210"), "+919876543210");
+  assert.equal(normalizeCustomerPhone("+91 (98765) 43210"), "+919876543210");
+  assert.equal(normalizeCustomerPhone("919876543210"), "+919876543210");
+  assert.equal(normalizeCustomerPhone("12345"), null);
+  assert.equal(normalizeCustomerPhone("987654321a"), null);
+});
+test("marketing keeps payment identity separate from explicit WhatsApp consent", async () => {
+  const db = openDb(":memory:"), app = await createApp(db, cfg);
+  try {
+    const registration = await app.inject({ method: "POST", url: "/api/auth/register", headers: { "x-client": "native" }, payload: { email: `marketing-${randomUUID()}@example.test`, password: "marketing secure password", name: "Marketing owner" } });
+    const token = registration.json().token;
+    const ownerId = db.prepare("SELECT id FROM users WHERE id IN (SELECT user_id FROM sessions WHERE token_hash=?)").get(createHash("sha256").update(token).digest("hex")) as any;
+    const me = await app.inject({ method: "GET", url: "/api/me", headers: { authorization: `Bearer ${token}` } });
+    const tenantId = me.json().tenants[0].id;
+    const created = await app.inject({ method: "POST", url: "/api/locations", headers: { authorization: `Bearer ${token}` }, payload: { tenantId, name: "Marketing Cafe", slug: `marketing-${randomUUID().slice(0, 8)}`, category: "cafe" } });
+    const location = created.json();
+    const locationView = await app.inject({ method: "GET", url: `/api/locations/${location.id}`, headers: { authorization: `Bearer ${token}` } });
+    const profile = locationView.json();
+    await app.inject({ method: "PUT", url: `/api/locations/${location.id}`, headers: { authorization: `Bearer ${token}` }, payload: { ...profile, published: true } });
+    const optOut = await app.inject({ method: "POST", url: `/api/public/${location.slug}/marketing/opt-out`, payload: { customerPhone: "9876543210" } });
+    assert.equal(optOut.statusCode, 200);
+    const customers = await app.inject({ method: "GET", url: `/api/locations/${location.id}/marketing/customers`, headers: { authorization: `Bearer ${token}` } });
+    assert.equal(customers.statusCode, 200);
+    assert.equal(customers.json()[0].whatsapp_consent_status, "opted_out");
+    const promotion = await app.inject({ method: "POST", url: `/api/locations/${location.id}/marketing/promotions`, headers: { authorization: `Bearer ${token}` }, payload: { name: "Happy hour", customerTitle: "20% off drinks", type: "percentage", valuePaise: 2000, target: { allMenu: true }, startAt: new Date(Date.now() - 60000).toISOString(), endAt: new Date(Date.now() + 3600000).toISOString() } });
+    assert.equal(promotion.statusCode, 200);
+    const challenge = await app.inject({ method: "POST", url: `/api/locations/${location.id}/marketing/challenges`, headers: { authorization: `Bearer ${token}` }, payload: { name: "Return three times", customerTitle: "Visit three times", ruleType: "VISIT_COUNT", target: 3, rewardType: "flat_discount", rewardValue: 10000, startAt: new Date(Date.now() - 60000).toISOString(), endAt: new Date(Date.now() + 3600000).toISOString() } });
+    assert.equal(challenge.statusCode, 200);
+    const publicPage = await app.inject({ method: "GET", url: `/api/public/${location.slug}` });
+    assert.equal(publicPage.statusCode, 200);
+    assert.equal(publicPage.json().promotions.length, 1);
+    assert.equal(publicPage.json().challenges.length, 1);
+    const optedInCustomer = randomUUID();
+    db.prepare("INSERT INTO customers(id,tenant_id,phone_e164,display_phone) VALUES (?,?,?,?)").run(optedInCustomer, tenantId, "+919876543211", "+919876543211");
+    db.prepare("INSERT INTO customer_consents(id,tenant_id,customer_id,channel,purpose,status,consented_at,source,consent_text_version,business_id) VALUES (?,?,?,?,?,?,?,?,?,?)").run(randomUUID(), tenantId, optedInCustomer, "whatsapp", "marketing", "opted_in", new Date().toISOString(), "test", "whatsapp-marketing-v1", location.id);
+    const noConsentCustomer = randomUUID();
+    db.prepare("INSERT INTO customers(id,tenant_id,phone_e164,display_phone) VALUES (?,?,?,?)").run(noConsentCustomer, tenantId, "+919876543212", "+919876543212");
+    const marketingRepository = new MarketingRepository(createSqliteDatabase(db));
+    await marketingRepository.recordCompletedOrder({ tenantId, locationId: location.id, customerId: optedInCustomer, amountPaise: 10000 });
+    await marketingRepository.recordCompletedOrder({ tenantId, locationId: location.id, customerId: optedInCustomer, amountPaise: 10000 });
+    await marketingRepository.recordCompletedOrder({ tenantId, locationId: location.id, customerId: optedInCustomer, amountPaise: 10000 });
+    assert.equal((db.prepare("SELECT status FROM challenge_progress WHERE customer_id=?").get(optedInCustomer) as any)?.status, "COMPLETED");
+    assert.equal((db.prepare("SELECT status FROM challenge_reward_entitlements WHERE customer_id=?").get(optedInCustomer) as any)?.status, "available");
+    const scheduled = await app.inject({ method: "POST", url: `/api/locations/${location.id}/marketing/campaigns`, headers: { authorization: `Bearer ${token}` }, payload: { name: "Scheduled opt-in only", audience: { segment: "all_opted_in" }, scheduledAt: new Date(Date.now() + 3600000).toISOString() } });
+    assert.equal(scheduled.statusCode, 200);
+    assert.equal(scheduled.json().recipientCount, 1);
+    const campaign = await app.inject({ method: "POST", url: `/api/locations/${location.id}/marketing/campaigns`, headers: { authorization: `Bearer ${token}` }, payload: { name: "Welcome back", audience: { segment: "all_opted_in" } } });
+    assert.equal(campaign.statusCode, 200);
+    const send = await app.inject({ method: "POST", url: `/api/locations/${location.id}/marketing/campaigns/${campaign.json().id}/send`, headers: { authorization: `Bearer ${token}` } });
+    assert.equal(send.statusCode, 503);
+    const templateId = randomUUID(), workerCampaignId = randomUUID(), recipientId = randomUUID();
+    db.prepare("INSERT INTO whatsapp_templates(id,tenant_id,name,body_preview,status) VALUES (?,?,?,?,?)").run(templateId, tenantId, "welcome_back", "Hello", "approved");
+    db.prepare("INSERT INTO campaigns(id,tenant_id,location_id,name,status,template_id,audience_json,created_by) VALUES (?,?,?,?,?,?,?,?)").run(workerCampaignId, tenantId, location.id, "Worker campaign", "scheduled", templateId, "{}", ownerId.id);
+    db.prepare("INSERT INTO campaign_recipients(id,campaign_id,customer_id,phone_e164,consent_status_at_send) VALUES (?,?,?,?,?)").run(recipientId, workerCampaignId, optedInCustomer, "+919876543211", "opted_in");
+    db.prepare("INSERT INTO marketing_jobs(id,tenant_id,campaign_id,job_type,status,available_at,idempotency_key) VALUES (?,?,?,?,?,?,?)").run(randomUUID(), tenantId, workerCampaignId, "campaign_delivery", "queued", new Date(Date.now() - 1000).toISOString(), `test:${workerCampaignId}`);
+    const worker = new MarketingWorker(createSqliteDatabase(db), new MockWhatsAppProvider());
+    assert.deepEqual(await worker.runOnce({ paceMs: 0 }), { claimed: 1, sent: 1, skipped: 0, failed: 0 });
+    assert.equal((db.prepare("SELECT status FROM campaign_recipients WHERE id=?").get(recipientId) as any).status, "sent");
+  } finally {
+    await app.close();
+    db.close();
+  }
+});
 test("durable migrations and records survive closing the database", () => {
   const dir = mkdtempSync(join(tmpdir(), "prime-"));
   try {
@@ -29,7 +97,7 @@ test("durable migrations and records survive closing the database", () => {
     );
     assert.equal(
       (db.prepare("SELECT count(*) n FROM migrations").get() as any).n,
-      13,
+      18,
     );
     db.close();
   } finally {

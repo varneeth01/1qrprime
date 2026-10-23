@@ -8,7 +8,7 @@ export const envSchema = z.object({
   DATABASE_PATH: z.string().default("./data/prime.sqlite"),
   MEDIA_ROOT: z.string().default("./data/uploads"),
   DATABASE_URL: z.string().url().optional(),
-  DIRECT_URL: z.string().url().optional(),
+  DATABASE_SSL: z.enum(["disable", "require", "verify-full"]).default("disable"),
   PUBLIC_ORIGIN: z.string().url().default("http://localhost:5173"),
   API_PUBLIC_ORIGIN: z.string().url().optional(),
   ADMIN_ORIGIN: z.string().url().default("http://localhost:5173"),
@@ -32,6 +32,12 @@ export const envSchema = z.object({
   SUPPORT_EMAIL: z.string().email().optional(),
   RAZORPAY_KEY_ID: z.string().optional(),
   RAZORPAY_KEY_SECRET: z.string().optional(),
+  WHATSAPP_PROVIDER: z.enum(["none", "meta_cloud_api", "mock"]).default("none"),
+  WHATSAPP_ACCESS_TOKEN: z.string().optional(),
+  WHATSAPP_PHONE_NUMBER_ID: z.string().optional(),
+  WHATSAPP_BUSINESS_ACCOUNT_ID: z.string().optional(),
+  WHATSAPP_WEBHOOK_VERIFY_TOKEN: z.string().optional(),
+  WHATSAPP_APP_SECRET: z.string().optional(),
 });
 export type Config = z.infer<typeof envSchema>;
 export function config() {
@@ -57,12 +63,18 @@ export function config() {
     !c.MEDIA_ROOT.startsWith("/")
   )
     throw Error("Production local storage requires an absolute MEDIA_ROOT");
+  if (c.NODE_ENV === "production" && c.STORAGE_DRIVER === "local")
+    throw Error("Production requires durable object storage; set STORAGE_DRIVER=s3 or STORAGE_DRIVER=vercel-blob");
   if (c.NODE_ENV === "production" && c.STORAGE_DRIVER === "vercel-blob" && !c.BLOB_READ_WRITE_TOKEN)
     throw Error("Vercel Blob storage requires BLOB_READ_WRITE_TOKEN");
   if (c.NODE_ENV === "production" && c.DATABASE_DRIVER !== "postgres")
     throw Error("Production requires DATABASE_DRIVER=postgres");
   if (c.STORAGE_DRIVER === "s3" && (!c.S3_BUCKET || !c.S3_PUBLIC_ORIGIN))
     throw Error("S3 storage requires S3_BUCKET and S3_PUBLIC_ORIGIN");
+  if (c.WHATSAPP_PROVIDER === "meta_cloud_api" && (!c.WHATSAPP_ACCESS_TOKEN || !c.WHATSAPP_PHONE_NUMBER_ID || !c.WHATSAPP_BUSINESS_ACCOUNT_ID || !c.WHATSAPP_APP_SECRET))
+    throw Error("Meta WhatsApp requires server-side provider credentials and identifiers");
+  if (c.WHATSAPP_PROVIDER === "mock" && c.NODE_ENV !== "test")
+    throw Error("Mock WhatsApp provider is test-only");
   if (
     c.NODE_ENV === "production" &&
     ((!c.SMTP_URL && !c.SMTP_HOST) || !c.SMTP_FROM_EMAIL)

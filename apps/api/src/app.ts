@@ -4,6 +4,7 @@ import cors from "@fastify/cors";
 import helmet from "@fastify/helmet";
 import rateLimit from "@fastify/rate-limit";
 import multipart from "@fastify/multipart";
+import rawBody from "fastify-raw-body";
 import { randomUUID, randomBytes, createHash, createHmac, timingSafeEqual } from "node:crypto";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
@@ -24,6 +25,11 @@ import { AnalyticsRepository } from "./repositories/analytics-repository.js";
 import { StaffRepository } from "./repositories/staff-repository.js";
 import { NotificationRepository } from "./repositories/notification-repository.js";
 import { AdminRepository } from "./repositories/admin-repository.js";
+import { CustomerRepository } from "./repositories/customer-repository.js";
+import { MarketingRepository } from "./repositories/marketing-repository.js";
+import { OperationsRealtime } from "./realtime.js";
+import { OrderOperationsRepository } from "./repositories/order-operations-repository.js";
+import { createWhatsAppProvider } from "./whatsapp.js";
 import { type Config } from "./config.js";
 import {
   basicUpi,
@@ -37,6 +43,7 @@ import {
   link,
   isPrimeEligibleCategory,
 } from "./domain.js";
+import { normalizeCustomerPhone } from "./customer-phone.js";
 const id = () => randomUUID();
 const publicId = () => randomBytes(16).toString("hex");
 const secret = () => randomBytes(32).toString("hex");
@@ -53,10 +60,12 @@ const normalizeSlug = (value: string) => value
   .replace(/[^a-z0-9]+/g, "-")
   .replace(/-+/g, "-")
   .replace(/^-|-$/g, "");
+const rewardId = z.string().trim().min(1).max(128).regex(/^[A-Za-z0-9_-]+$/, "Invalid reward");
 export const normalizePaymentAmount = (value: unknown) => {
   const amount = typeof value === "number" ? value : Number(value);
   return Number.isSafeInteger(amount) && amount >= 100 ? amount : null;
 };
+export { normalizeCustomerPhone };
 const hash = (s: string) => createHash("sha256").update(s).digest("hex");
 const fail = (statusCode: number, message: string, code?: string): never => {
   throw Object.assign(new Error(message), { statusCode, appCode: code });
@@ -138,6 +147,7 @@ export async function createApp(
   await app.register(multipart, {
     limits: { fileSize: 5 * 1024 * 1024, files: 1 },
   });
+  await app.register(rawBody, { field: "rawBody", global: false, encoding: "utf8", runFirst: true });
   const asyncDb = asyncDatabase ?? createSqliteDatabase(db);
   const authRepository = new AuthRepository(asyncDb);
   const businessRepository = new BusinessRepository(asyncDb);
@@ -151,6 +161,11 @@ export async function createApp(
   const staffRepository = new StaffRepository(asyncDb);
   const notificationRepository = new NotificationRepository(asyncDb);
   const adminRepository = new AdminRepository(asyncDb);
+  const customerRepository = new CustomerRepository(asyncDb);
+  const marketingRepository = new MarketingRepository(asyncDb);
+  const realtime = new OperationsRealtime();
+  const operationsRepository = new OrderOperationsRepository(asyncDb);
+  const whatsappProvider = createWhatsAppProvider(c);
   const auditAsync = (actor: string, tenant: string | null, action: string, record: string, detail: unknown, tx: DbTransaction = asyncDb) =>
     authRepository.audit(tx, actor, tenant, action, record, detail);
   const auth = async (r: FastifyRequest) => {
@@ -185,6 +200,40 @@ export async function createApp(
       fail(402, "This management feature is unavailable on the current plan");
     return t;
   };
+  const hasPermission = (u: any, capability: string) => {
+    if (u.role === "owner") return true;
+    const permissions = u.permissions || {};
+    if (permissions[capability] === true || permissions[capability.replace(".", "_")] === true) return true;
+    if (capability === "orders.manage" && (permissions["orders.update"] === true || permissions.orders?.update === true)) return true;
+    if (capability.endsWith(".view") && permissions[capability.replace(/\.view$/, ".manage")] === true) return true;
+    if (u.role === "manager") return ["orders.view", "orders.manage", "orders.kitchen", "orders.service", "orders.close", "orders.cancel_locked_item", "service_requests.view", "service_requests.manage", "billing.view", "billing.manage", "payments.view", "staff.manage"].includes(capability);
+    const operational = u.operational_role || "service";
+    if (operational === "kitchen") return ["orders.view", "orders.manage", "orders.kitchen"].includes(capability);
+    // Service/floor staff may start or finish kitchen workflow when the
+    // restaurant has not separated those duties. They still do not receive
+    // kitchen-only data or alerts unless explicitly granted elsewhere.
+    if (operational === "service") return ["orders.view", "orders.manage", "orders.kitchen", "orders.service", "service_requests.view", "service_requests.manage"].includes(capability);
+    if (operational === "cashier") return ["orders.view", "billing.view", "billing.manage", "payments.view", "orders.close"].includes(capability);
+    return false;
+  };
+  const requirePermission = (u: any, capability: string) => { if (!hasPermission(u, capability)) fail(403, "Permission denied"); };
+  const marketingPermission = (u: any, capability: string) => {
+    if (u.role === "owner") return true;
+    const permissions = u.permissions || {};
+    const direct = (key: string) => permissions[`marketing.${key}`] === true || permissions.marketing?.[key] === true;
+    if (direct(capability)) return true;
+    if (direct(`${capability}.manage`)) return true;
+    // A manage capability includes the corresponding read capability. This
+    // keeps staff permissions expressive without requiring duplicate grants.
+    if (capability.endsWith(".manage")) return direct(capability.slice(0, -".manage".length));
+    if (capability === "view") return Object.keys(permissions).some((key) => key.startsWith("marketing.") && permissions[key] === true) || Object.values(permissions.marketing || {}).some((value: unknown) => value === true);
+    return direct("view");
+  };
+  const marketingLoc = async (r: FastifyRequest, capability = "view") => {
+    const { l, u } = await loc(r);
+    if (!marketingPermission(u, capability)) fail(403, "You do not have permission to use marketing");
+    return { l, u };
+  };
   const publicLoc = async (slug: string) => {
     const l = await customerPageRepository.getPublishedBusiness(slug);
     if (!l) fail(404, "Business page unavailable");
@@ -216,7 +265,7 @@ export async function createApp(
     const u = await asyncAuth(r);
     const m = await businessRepository.getMembership(u.id, tenant);
     if (!m || !roles.includes(m.role)) fail(403, "Permission denied");
-    return { ...u, role: m.role, permissions: typeof m.permissions === "string" ? JSON.parse(m.permissions || "{}") : (m.permissions || {}) };
+    return { ...u, role: m.role, operational_role: m.operational_role || "service", permissions: typeof m.permissions === "string" ? JSON.parse(m.permissions || "{}") : (m.permissions || {}) };
   };
   const asyncEnt = async (tenant: string) => {
     const t = await asyncDb.get<any>("SELECT t.*,p.entitlements,p.name plan_name,p.price_paise plan_price_paise,EXISTS(SELECT 1 FROM memberships qm JOIN users qu ON qu.id=qm.user_id WHERE qm.tenant_id=t.id AND qm.role='owner' AND qu.account_type='internal_qa') AS internal_qa_authorized FROM tenants t JOIN plans p ON p.id=t.plan_id WHERE t.id=?", [tenant]);
@@ -474,7 +523,7 @@ export async function createApp(
       internalQa: u.account_type === "internal_qa",
       emailVerified: !!u.email_verified,
       tenants: await Promise.all(tenants.map(async (t) => ({ ...t, ...(await asyncEnt(t.id)) }))),
-      locations: await Promise.all(locations.map(asyncView)),
+      locations: await Promise.all(locations.map(async (location) => ({ ...await asyncView(location), ...(await businessRepository.getMembership(u.id, location.tenant_id) || {}) }))),
       billing: billingCapabilities,
     };
   });
@@ -1106,9 +1155,37 @@ export async function createApp(
       profile: p,
       capabilities: CATEGORY_CAPABILITIES[l.category as keyof typeof CATEGORY_CAPABILITIES] || CATEGORY_CAPABILITIES.generic,
       ...(await asyncMenuView(l.id)),
+      promotions: await marketingRepository.activePromotions(l.id),
+      challenges: await marketingRepository.activeChallenges(l.id),
       table: table ? { id: table.id, name: table.name, publicToken: table.public_token } : null,
       paymentAvailable: !!l.active_route_id,
     };
+  });
+  app.get("/api/public/:slug/promotions/:pid", async (r) => {
+    const l = await publicLoc((r.params as any).slug);
+    const promotion = await marketingRepository.publicPromotion(l.id, (r.params as any).pid);
+    if (!promotion) fail(404, "Offer not found");
+    return promotion;
+  });
+  app.post("/api/public/:slug/rewards", async (r) => {
+    const l = await publicLoc((r.params as any).slug);
+    const body = z.object({ customerPhone: z.string().trim().min(1).max(32) }).parse(r.body);
+    const phone = normalizeCustomerPhone(body.customerPhone);
+    if (!phone) fail(400, "Enter a valid Indian mobile number", "INVALID_CUSTOMER_PHONE");
+    return { rewards: await marketingRepository.publicRewards(l.id, phone as string) };
+  });
+  app.post("/api/public/:slug/rewards/quote", async (r) => {
+    const l = await publicLoc((r.params as any).slug);
+    const body = z.object({
+      customerPhone: z.string().trim().min(1).max(32),
+      rewardEntitlementId: rewardId,
+      lines: z.array(z.object({ itemId: z.uuid(), quantity: z.number().int().min(1).max(20) })).min(1).max(50),
+      orderType: z.enum(["dine_in", "takeaway", "delivery"]).default("takeaway"),
+    }).parse(r.body);
+    const phone = normalizeCustomerPhone(body.customerPhone);
+    if (!phone) fail(400, "Enter a valid Indian mobile number", "INVALID_CUSTOMER_PHONE");
+    const profile = profileSchema.parse(JSON.parse(l.profile));
+    return orderRepository.quoteReward({ location: l, profile, customerPhone: phone as string, rewardEntitlementId: body.rewardEntitlementId, lines: body.lines, orderType: body.orderType });
   });
   // QR artwork is non-sensitive public artwork. Keeping a public image route
   // lets customer cameras and the native merchant app render the same stable
@@ -1158,6 +1235,142 @@ export async function createApp(
       .parse(r.body);
     await analyticsRepository.record(asyncDb, l.id, b.kind);
     return { ok: true };
+  });
+  app.post("/api/public/:slug/marketing/opt-out", { config: { rateLimit: { max: 5, timeWindow: "1 hour" } } }, async (r) => {
+    const l = await publicLoc((r.params as any).slug);
+    const b = z.object({ customerPhone: z.string().trim().min(1).max(32) }).parse(r.body);
+    const phone = normalizeCustomerPhone(b.customerPhone);
+    // Keep the response intentionally generic so an unknown phone cannot be
+    // used to enumerate a business's customer list.
+    if (phone) {
+      const customer = await customerRepository.recordActivity(asyncDb, { tenantId: l.tenant_id, locationId: l.id, phoneE164: phone, source: "public_opt_out" });
+      await customerRepository.setConsent(asyncDb, { tenantId: l.tenant_id, customerId: customer.id, businessId: l.id, status: "opted_out", source: "public_opt_out" });
+    }
+    return { ok: true, message: "If this number was subscribed, marketing messages will stop." };
+  });
+
+  app.get("/api/webhooks/whatsapp", async (r, reply) => {
+    const query = r.query as any;
+    if (query["hub.mode"] !== "subscribe" || !c.WHATSAPP_WEBHOOK_VERIFY_TOKEN || query["hub.verify_token"] !== c.WHATSAPP_WEBHOOK_VERIFY_TOKEN) return reply.code(403).send({ error: "Webhook verification failed" });
+    return reply.type("text/plain").send(String(query["hub.challenge"] || ""));
+  });
+  app.post("/api/webhooks/whatsapp", { config: { rawBody: true } }, async (r, reply) => {
+    const raw = String((r as any).rawBody || "");
+    if (!raw || !whatsappProvider.verifyWebhook(raw, r.headers["x-hub-signature-256"] as string | undefined)) return reply.code(401).send({ error: "Invalid webhook signature" });
+    const events = whatsappProvider.normalizeWebhook((r as any).body);
+    let accepted = 0;
+    for (const event of events) {
+      const inserted = await asyncDb.run("INSERT INTO whatsapp_webhook_events(id,provider_message_id,status,received_at) VALUES (?,?,?,CURRENT_TIMESTAMP) ON CONFLICT(provider_message_id,status) DO NOTHING", [id(), event.providerMessageId, event.status]);
+      if (inserted.rowCount !== 1) continue;
+      accepted++;
+      const timestamp = event.status === "sent" ? "sent_at" : event.status === "delivered" ? "delivered_at" : event.status === "read" ? "read_at" : "failed_at";
+      await asyncDb.run(`UPDATE campaign_recipients SET status=?,${timestamp}=CURRENT_TIMESTAMP,failure_code=? WHERE provider_message_id=?`, [event.status, event.failureCode || null, event.providerMessageId]);
+    }
+    return { received: events.length, accepted };
+  });
+
+  app.get("/api/locations/:lid/marketing", async (r) => {
+    const { l } = await marketingLoc(r, "view");
+    const [customers, subscribers, promotions, challenges, campaigns, whatsappConnection] = await Promise.all([
+      asyncDb.get<any>("SELECT count(*) n FROM customers WHERE tenant_id=?", [l.tenant_id]),
+      asyncDb.get<any>("SELECT count(*) n FROM customer_consents WHERE tenant_id=? AND channel='whatsapp' AND purpose='marketing' AND status='opted_in'", [l.tenant_id]),
+      asyncDb.get<any>("SELECT count(*) n FROM promotions WHERE location_id=? AND status IN ('scheduled','active') AND start_at<=? AND end_at>?", [l.id, new Date().toISOString(), new Date().toISOString()]),
+      asyncDb.get<any>("SELECT count(*) n FROM challenges WHERE location_id=? AND status IN ('scheduled','active') AND start_at<=? AND end_at>?", [l.id, new Date().toISOString(), new Date().toISOString()]),
+      marketingRepository.listCampaigns(l.tenant_id, l.id),
+      asyncDb.get<any>("SELECT status FROM marketing_connections WHERE tenant_id=? AND (location_id=? OR location_id IS NULL) AND provider='meta_cloud_api' ORDER BY location_id NULLS LAST LIMIT 1", [l.tenant_id, l.id]),
+    ]);
+    return { customers: Number(customers?.n || 0), subscribers: Number(subscribers?.n || 0), activePromotions: Number(promotions?.n || 0), activeChallenges: Number(challenges?.n || 0), campaigns, whatsappConnection: whatsappConnection?.status || "not_connected" };
+  });
+  app.get("/api/locations/:lid/marketing/customers", async (r) => {
+    const { l } = await marketingLoc(r, "customers");
+    const query = z.object({ q: z.string().max(80).default(""), status: z.enum(["opted_in", "opted_out"]).optional() }).parse(r.query);
+    return customerRepository.list(l.tenant_id, query.q, query.status);
+  });
+  app.get("/api/locations/:lid/marketing/customers/:cid", async (r) => {
+    const { l } = await marketingLoc(r, "customers");
+    const customer = await customerRepository.findById(l.tenant_id, (r.params as any).cid);
+    if (!customer) fail(404, "Customer not found");
+    const [orders, campaigns, progress] = await Promise.all([
+      asyncDb.all<any>("SELECT id,public_order_number,state,amount_paise,created_at FROM orders WHERE location_id=? AND customer_id=? ORDER BY created_at DESC LIMIT 50", [l.id, customer.id]),
+      asyncDb.all<any>("SELECT c.name,c.status,cr.status recipient_status,cr.sent_at FROM campaign_recipients cr JOIN campaigns c ON c.id=cr.campaign_id WHERE c.tenant_id=? AND cr.customer_id=? ORDER BY c.created_at DESC LIMIT 50", [l.tenant_id, customer.id]),
+      asyncDb.all<any>("SELECT cp.progress,cp.target,cp.status,ch.customer_title,ch.end_at FROM challenge_progress cp JOIN challenges ch ON ch.id=cp.challenge_id WHERE cp.customer_id=? AND ch.tenant_id=? ORDER BY ch.end_at DESC LIMIT 20", [customer.id, l.tenant_id]),
+    ]);
+    return { customer, orders: orders.map((order) => ({ ...order, amount_paise: Number(order.amount_paise || 0) })), campaigns, challenges: progress };
+  });
+  app.get("/api/locations/:lid/marketing/campaigns", async (r) => {
+    const { l } = await marketingLoc(r, "campaigns");
+    return marketingRepository.listCampaigns(l.tenant_id, l.id);
+  });
+  app.get("/api/locations/:lid/marketing/templates", async (r) => {
+    const { l } = await marketingLoc(r, "campaigns");
+    return asyncDb.all<any>("SELECT id,name,language,body_preview,status,rejection_reason FROM whatsapp_templates WHERE tenant_id=? ORDER BY name", [l.tenant_id]);
+  });
+  app.post("/api/locations/:lid/marketing/campaigns", async (r) => {
+    const { l, u } = await marketingLoc(r, "campaigns.manage");
+    const b = z.object({ name: z.string().trim().min(2).max(120), templateId: z.uuid().optional(), audience: z.object({ segment: z.enum(["all_opted_in", "new", "repeat", "inactive"]).default("all_opted_in"), days: z.number().int().min(1).max(365).optional(), minSpendPaise: z.number().int().min(0).max(100000000).optional() }).default({ segment: "all_opted_in" }), promotionId: z.uuid().optional(), challengeId: z.uuid().optional(), scheduledAt: z.iso.datetime().optional() }).parse(r.body);
+    if (b.templateId && !(await asyncDb.get("SELECT 1 FROM whatsapp_templates WHERE id=? AND tenant_id=?", [b.templateId, l.tenant_id]))) fail(403, "Template does not belong to this business");
+    if (b.promotionId && !(await asyncDb.get("SELECT 1 FROM promotions WHERE id=? AND tenant_id=? AND location_id=?", [b.promotionId, l.tenant_id, l.id]))) fail(403, "Promotion does not belong to this business");
+    if (b.challengeId && !(await asyncDb.get("SELECT 1 FROM challenges WHERE id=? AND tenant_id=? AND location_id=?", [b.challengeId, l.tenant_id, l.id]))) fail(403, "Challenge does not belong to this business");
+    if (b.scheduledAt && new Date(b.scheduledAt).getTime() <= Date.now()) fail(400, "Campaign schedule must be in the future");
+    const campaignId = id();
+    const created = await marketingRepository.createCampaign(asyncDb, { id: campaignId, tenantId: l.tenant_id, locationId: l.id, name: b.name, templateId: b.templateId, audience: b.audience, promotionId: b.promotionId, challengeId: b.challengeId, scheduledAt: b.scheduledAt, actorId: u.id });
+    await auditAsync(u.id, l.tenant_id, "marketing.campaign.created", campaignId, { name: b.name, audience: b.audience });
+    if (b.scheduledAt) {
+      await marketingRepository.queueRecipients(asyncDb, campaignId, l.tenant_id, b.audience);
+      await marketingRepository.enqueueCampaignDelivery(asyncDb, { id: id(), tenantId: l.tenant_id, campaignId, availableAt: b.scheduledAt });
+    }
+    return { ...created, audience: CustomerRepository.parseAudience(created?.audience_json), recipientCount: b.scheduledAt ? (await marketingRepository.listRecipients(campaignId, l.tenant_id)).length : 0 };
+  });
+  app.post("/api/locations/:lid/marketing/campaigns/:cid/send", async (r) => {
+    const { l, u } = await marketingLoc(r, "campaigns.manage");
+    const campaign = await asyncDb.get<any>("SELECT * FROM campaigns WHERE id=? AND tenant_id=? AND location_id=?", [(r.params as any).cid, l.tenant_id, l.id]);
+    if (!campaign) fail(404, "Campaign not found");
+    const connection = await asyncDb.get<any>("SELECT status FROM marketing_connections WHERE tenant_id=? AND (location_id=? OR location_id IS NULL) AND provider='meta_cloud_api' ORDER BY location_id NULLS LAST LIMIT 1", [l.tenant_id, l.id]);
+    const template = campaign.template_id ? await asyncDb.get<any>("SELECT * FROM whatsapp_templates WHERE id=? AND tenant_id=?", [campaign.template_id, l.tenant_id]) : undefined;
+    if (!connection || connection.status !== "connected" || !template || template.status !== "approved") fail(503, "Connect WhatsApp and choose an approved template before sending");
+    await marketingRepository.queueRecipients(asyncDb, campaign.id, l.tenant_id, CustomerRepository.parseAudience(campaign.audience_json));
+    const recipientCount = (await marketingRepository.listRecipients(campaign.id, l.tenant_id)).length;
+    await auditAsync(u.id, l.tenant_id, "marketing.campaign.send_requested", campaign.id, { recipientCount });
+    // Delivery is deliberately not performed in the request. A durable worker
+    // must claim recipients, re-check consent, pace provider calls and record
+    // idempotent outcomes before this endpoint can report a queued send.
+    void whatsappProvider;
+    fail(503, "Campaign delivery worker is not configured", "WHATSAPP_WORKER_NOT_CONFIGURED");
+  });
+  app.get("/api/locations/:lid/marketing/promotions", async (r) => {
+    const { l } = await marketingLoc(r, "view");
+    return marketingRepository.listPromotions(l.id, l.tenant_id);
+  });
+  app.post("/api/locations/:lid/marketing/promotions", async (r) => {
+    const { l, u } = await marketingLoc(r, "promotions.manage");
+    const b = z.object({ name: z.string().trim().min(2).max(100), customerTitle: z.string().trim().min(2).max(120), description: z.string().max(500).default(""), imageUrl: link.nullable().optional(), type: z.enum(["percentage", "flat", "special_price"]), valuePaise: z.number().int().positive().max(100000000), target: z.object({ itemIds: z.array(z.uuid()).max(100).default([]), categoryIds: z.array(z.uuid()).max(100).default([]), allMenu: z.boolean().default(false) }).default({ itemIds: [], categoryIds: [], allMenu: false }), startAt: z.iso.datetime(), endAt: z.iso.datetime(), recurrence: z.record(z.string(), z.unknown()).optional(), priority: z.number().int().min(0).max(1000).default(0), stackable: z.boolean().default(false) }).parse(r.body);
+    if (new Date(b.endAt).getTime() <= new Date(b.startAt).getTime()) fail(400, "Promotion end must be after its start");
+    if (b.type === "percentage" && b.valuePaise > 10000) fail(400, "Percentage discount cannot exceed 100%");
+    for (const itemId of b.target.itemIds) if (!(await menuRepository.itemInLocation(itemId, l.id))) fail(403, "Promotion item does not belong to this business");
+    for (const categoryId of b.target.categoryIds) if (!(await menuRepository.categoryInLocation(categoryId, l.id))) fail(403, "Promotion category does not belong to this business");
+    if (!b.target.allMenu && !b.target.itemIds.length && !b.target.categoryIds.length) fail(400, "Choose what this promotion applies to");
+    const promotionId = id();
+    const status = new Date(b.startAt).getTime() <= Date.now() ? "active" : "scheduled";
+    const created = await marketingRepository.createPromotion(asyncDb, { ...b, id: promotionId, tenantId: l.tenant_id, locationId: l.id, actorId: u.id, status });
+    await auditAsync(u.id, l.tenant_id, "marketing.promotion.created", promotionId, { name: b.name, type: b.type });
+    return created;
+  });
+  app.get("/api/locations/:lid/marketing/challenges", async (r) => {
+    const { l } = await marketingLoc(r, "view");
+    return marketingRepository.listChallenges(l.id, l.tenant_id);
+  });
+  app.post("/api/locations/:lid/marketing/challenges", async (r) => {
+    const { l, u } = await marketingLoc(r, "challenges.manage");
+    const b = z.object({ name: z.string().trim().min(2).max(100), customerTitle: z.string().trim().min(2).max(120), description: z.string().max(500).default(""), imageUrl: link.nullable().optional(), ruleType: z.enum(["ORDER_COUNT", "VISIT_COUNT", "SPEND_AMOUNT", "ITEM_QUANTITY", "CATEGORY_QUANTITY"]), target: z.number().int().positive().max(1000000), rewardType: z.enum(["flat_discount", "percentage_discount", "item"]), rewardValue: z.number().int().positive().max(100000000), rewardItemId: z.uuid().optional(), startAt: z.iso.datetime(), endAt: z.iso.datetime(), showInMenu: z.boolean().default(true), featured: z.boolean().default(false) }).parse(r.body);
+    if (new Date(b.endAt).getTime() <= new Date(b.startAt).getTime()) fail(400, "Challenge end must be after its start");
+    if (b.rewardType === "percentage_discount" && b.rewardValue > 10000) fail(400, "Percentage reward cannot exceed 100%");
+    if (b.rewardType === "item" && !b.rewardItemId) fail(400, "Choose the reward menu item");
+    if (b.rewardItemId && !(await menuRepository.itemInLocation(b.rewardItemId, l.id))) fail(403, "Reward item does not belong to this business");
+    const challengeId = id();
+    const status = new Date(b.startAt).getTime() <= Date.now() ? "active" : "scheduled";
+    const created = await marketingRepository.createChallenge(asyncDb, { ...b, id: challengeId, tenantId: l.tenant_id, locationId: l.id, actorId: u.id, status });
+    await auditAsync(u.id, l.tenant_id, "marketing.challenge.created", challengeId, { name: b.name, ruleType: b.ruleType });
+    return created;
   });
   app.get("/api/locations/:lid/qr", async (r, reply) => {
     const { l } = await loc(r);
@@ -1227,30 +1440,60 @@ export async function createApp(
           tableToken: z.string().max(100).optional(),
           customerName: z.string().max(100).default(""),
           customerPhone: z.string().max(20).default(""),
+          whatsappMarketingConsent: z.boolean().default(false),
+          rewardEntitlementId: rewardId.optional(),
           deliveryAddress: z.string().max(500).default(""),
           landmark: z.string().max(200).default(""),
         })
         .parse(r.body);
-      const fingerprint = hash(JSON.stringify(b));
+      const normalizedOrderPhone = b.customerPhone ? normalizeCustomerPhone(b.customerPhone) : null;
+      if (b.customerPhone && !normalizedOrderPhone) fail(400, "Enter a valid Indian mobile number", "INVALID_CUSTOMER_PHONE");
+      const orderBody = { ...b, customerPhone: normalizedOrderPhone || "" };
+      const fingerprint = hash(JSON.stringify(orderBody));
       const tenantAccount = await ent(l.tenant_id);
       const created = await orderRepository.create({
         location: l,
         tenantAccount,
         profile: profileSchema.parse(typeof l.profile === "string" ? JSON.parse(l.profile) : l.profile),
-        body: b,
+        body: orderBody,
         fingerprint,
       });
-      return { ...(await orderRepository.view(created.order)), accessToken: created.accessToken };
+      realtime.emit({
+        id: id(), tenantId: l.tenant_id, locationId: l.id, kind: "order.created", audience: "kitchen",
+        data: { orderId: created.order.id, orderNumber: created.order.public_order_number, orderType: created.order.order_type, tableName: created.order.table_name_snapshot || null, lines: typeof created.order.lines === "string" ? JSON.parse(created.order.lines) : created.order.lines },
+      });
+      if (normalizedOrderPhone) {
+        const customer = await customerRepository.recordActivity(asyncDb, { tenantId: l.tenant_id, locationId: l.id, phoneE164: normalizedOrderPhone, source: "order_checkout", marketingConsent: b.whatsappMarketingConsent });
+        await asyncDb.run("UPDATE orders SET customer_id=?,customer_phone=? WHERE id=? AND location_id=? AND customer_phone=''", [customer.id, normalizedOrderPhone, created.order.id, l.id]);
+      }
+      return { ...(await orderRepository.publicView(created.order)), accessToken: created.accessToken };
     },
   );
-  app.get("/api/orders/:oid", async (r) => orderRepository.view(await orderAccess(r)));
+  app.get("/api/orders/:oid", async (r) => orderRepository.publicView(await orderAccess(r)));
   app.get("/api/public/orders/:token", async (r) => {
     const o = await orderRepository.getByTrackingToken((r.params as any).token);
     if (!o) fail(404, "Order not found");
-    return orderRepository.view(o);
+    return orderRepository.publicView(o);
+  });
+  app.get("/api/locations/:lid/operations/events", async (r, reply) => {
+    const { l, u } = await loc(r);
+    const wantsKitchen = hasPermission(u, "orders.kitchen");
+    const wantsService = hasPermission(u, "service_requests.view");
+    if (!wantsKitchen && !wantsService && !hasPermission(u, "orders.view")) fail(403, "Permission denied");
+    reply.hijack();
+    const raw = reply.raw;
+    raw.writeHead(200, { "Content-Type": "text/event-stream", "Cache-Control": "no-cache, no-transform", Connection: "keep-alive", "X-Accel-Buffering": "no" });
+    raw.write(`event: ready\ndata: ${JSON.stringify({ tenantId: l.tenant_id, locationId: l.id })}\n\n`);
+    const unsubscribe = realtime.subscribe(l.tenant_id, l.id, (event) => {
+      if ((event.audience === "kitchen" && !wantsKitchen) || (event.audience === "service" && !wantsService && !hasPermission(u, "orders.view"))) return;
+      raw.write(`id: ${event.id}\nevent: ${event.kind}\ndata: ${JSON.stringify(event.data)}\n\n`);
+    });
+    const heartbeat = setInterval(() => raw.write(": heartbeat\n\n"), 15000);
+    r.raw.on("close", () => { clearInterval(heartbeat); unsubscribe(); });
   });
   app.get("/api/locations/:lid/orders", async (r) => {
-    const { l } = await loc(r);
+    const { l, u } = await loc(r);
+    requirePermission(u, "orders.view");
     const orderRows = await orderRepository.list(l.id);
     return {
       orders: await Promise.all(orderRows.map(async (o: any) => ({ ...await orderRepository.view(o), events: await orderRepository.events(o.id) }))),
@@ -1258,16 +1501,51 @@ export async function createApp(
       pollAfterMs: 4000,
     };
   });
+  app.get("/api/locations/:lid/orders/:oid", async (r) => {
+    const { l, u } = await loc(r);
+    requirePermission(u, "orders.view");
+    const oid = (r.params as any).oid;
+    const order = await orderRepository.getById(oid, l.id);
+    if (!order) fail(404, "Order not found");
+    const view = await orderRepository.view(order);
+    const refunds = await asyncDb.all<any>(
+      `SELECT r.id,r.order_item_id,r.amount_paise,r.currency,r.status,r.reason,r.note,r.created_at,r.processed_at,oi.item_name_snapshot
+       FROM refunds r LEFT JOIN order_items oi ON oi.id=r.order_item_id
+       WHERE r.order_id=? AND r.location_id=? ORDER BY r.created_at ASC`,
+      [oid, l.id],
+    );
+    const refundIds = refunds.map((item: any) => item.id);
+    const audit = await asyncDb.all<any>(
+      `SELECT action,actor_id,record_id,detail,created_at FROM audit
+       WHERE tenant_id=? AND (record_id=?${refundIds.length ? ` OR record_id IN (${refundIds.map(() => "?").join(",")})` : ""})
+       ORDER BY created_at ASC`,
+      [l.tenant_id, oid, ...refundIds],
+    );
+    return { ...view, events: await orderRepository.events(oid), refunds, audit };
+  });
   app.post("/api/locations/:lid/orders/:oid/state", async (r) => {
     const { l, u } = await loc(r);
     const b = z
       .object({ state: z.string(), expectedState: z.string(), reason: z.string().max(300).default("") })
       .parse(r.body);
+    if (["preparing", "ready"].includes(b.state)) requirePermission(u, "orders.kitchen");
+    else if (b.state === "served") requirePermission(u, "orders.service");
+    else if (b.state === "closed") requirePermission(u, "orders.close");
+    else requirePermission(u, "orders.manage");
     const oid = (r.params as any).oid;
     await asyncDb.transaction(async (tx) => {
       const previous = await orderRepository.transition(tx, oid, l.id, b.state, b.expectedState, u.id, b.reason);
       await auditAsync(u.id, l.tenant_id, "order.state", oid, { old: previous.state, new: b.state }, tx);
     });
+    const updatedOrder = await orderRepository.getById(oid, l.id);
+    realtime.emit({ id: id(), tenantId: l.tenant_id, locationId: l.id, kind: "order.updated", audience: b.state === "served" || b.state === "closed" ? "service" : "kitchen", data: { orderId: oid, state: b.state, servedAt: updatedOrder?.served_at || null, closedAt: updatedOrder?.closed_at || null } });
+    if (b.state === "completed") {
+      const completed = await orderRepository.getById(oid, l.id);
+      if (completed?.customer_id || completed?.customer_phone) {
+        await customerRepository.recordCompletedOrder(asyncDb, { tenantId: l.tenant_id, locationId: l.id, customerId: completed.customer_id, phoneE164: completed.customer_phone || undefined, amountPaise: Number(completed.amount_paise || 0) });
+        await marketingRepository.recordCompletedOrder({ tenantId: l.tenant_id, locationId: l.id, customerId: completed.customer_id, phoneE164: completed.customer_phone || undefined, amountPaise: Number(completed.amount_paise || 0) });
+      }
+    }
     return { ok: true };
   });
   app.post("/api/orders/:oid/payments", async (r) => {
@@ -1277,25 +1555,51 @@ export async function createApp(
       o.payment_state !== "pending"
     )
       fail(409, "Order is not payable");
-    const b = z.object({ idempotencyKey: z.uuid() }).parse(r.body);
+    const b = z.object({ idempotencyKey: z.uuid(), customerPhone: z.string().trim().min(1).max(32), whatsappMarketingConsent: z.boolean().default(false) }).parse(r.body);
+    const customerPhone = normalizeCustomerPhone(b.customerPhone);
+    if (!customerPhone) fail(400, "Enter a valid Indian mobile number", "INVALID_CUSTOMER_PHONE");
     const location = await businessRepository.getLocation(o.location_id);
     if (!location) fail(404, "Location not found");
-    return paymentRepository.createAttempt({
+    const customer = await customerRepository.recordActivity(asyncDb, { tenantId: location.tenant_id, locationId: location.id, phoneE164: customerPhone ?? "", source: "pay_sheet", marketingConsent: b.whatsappMarketingConsent });
+    const attempt = await paymentRepository.createAttempt({
       locationId: location.id,
       activeRouteId: location.active_route_id,
       idempotencyKey: b.idempotencyKey,
       orderId: o.id,
+      customerPhone: customerPhone ?? undefined,
     });
+    await asyncDb.run("UPDATE attempts SET customer_id=? WHERE id=? AND location_id=?", [customer.id, attempt.id, location.id]);
+    await asyncDb.run("UPDATE orders SET customer_id=?,customer_phone=?,updated_at=CURRENT_TIMESTAMP WHERE id=? AND location_id=? AND customer_phone=''", [customer.id, customerPhone, o.id, location.id]);
+    return attempt;
   });
   app.post("/api/public/:slug/payments", async (r) => {
     const l = await publicLoc((r.params as any).slug);
-    const b = z.object({ idempotencyKey: z.uuid(), amountPaise: z.number().int().min(1).max(100000000).optional() }).parse(r.body);
-    return paymentRepository.createAttempt({
+    const b = z.object({ idempotencyKey: z.uuid(), amountPaise: z.number().int().min(1).max(100000000).optional(), customerPhone: z.string().trim().min(1).max(32), whatsappMarketingConsent: z.boolean().default(false), tableId: z.string().uuid().optional(), tableToken: z.string().max(100).optional() }).parse(r.body);
+    const customerPhone = normalizeCustomerPhone(b.customerPhone);
+    if (!customerPhone) fail(400, "Enter a valid Indian mobile number", "INVALID_CUSTOMER_PHONE");
+    let tableId: string | undefined;
+    let orderId: string | undefined;
+    if (b.tableId || b.tableToken) {
+      if (!b.tableId || !b.tableToken) fail(403, "Table context is invalid");
+      const table = await asyncDb.get<any>("SELECT id FROM restaurant_tables WHERE id=? AND location_id=? AND public_token=? AND enabled=TRUE", [b.tableId, l.id, b.tableToken]);
+      if (!table) fail(403, "Table context is invalid");
+      tableId = table.id;
+      const activeOrder = await serviceRequestRepository.activeOrderForTable(table.id, l.id);
+      if (!activeOrder) fail(409, "There is no active bill for this table");
+      orderId = activeOrder.id;
+    }
+    const customer = await customerRepository.recordActivity(asyncDb, { tenantId: l.tenant_id, locationId: l.id, phoneE164: customerPhone ?? "", source: "pay_sheet", marketingConsent: b.whatsappMarketingConsent });
+    const attempt = await paymentRepository.createAttempt({
       locationId: l.id,
       activeRouteId: l.active_route_id,
       idempotencyKey: b.idempotencyKey,
+      orderId,
       amountPaise: b.amountPaise,
+      customerPhone: customerPhone ?? undefined,
+      tableId,
     });
+    await asyncDb.run("UPDATE attempts SET customer_id=? WHERE id=? AND location_id=?", [customer.id, attempt.id, l.id]);
+    return attempt;
   });
   app.post("/api/locations/:lid/orders/:oid/confirm-payment", async (r) => {
     const { l, u } = await loc(r, ["owner", "manager"]);
@@ -1307,6 +1611,35 @@ export async function createApp(
       await auditAsync(u.id, l.tenant_id, "payment.merchant_confirmed", oid, b, tx);
     });
     return { ok: true, state: "merchant_confirmed", providerVerified: false };
+  });
+  app.get("/api/locations/:lid/operations-settings", async (r) => {
+    const { l, u } = await loc(r, ["owner", "manager", "staff"]);
+    requirePermission(u, "orders.view");
+    return { cancellationWindowMinutes: Number(l.cancellation_window_minutes ?? 5) };
+  });
+  app.patch("/api/locations/:lid/operations-settings", async (r) => {
+    const { l, u } = await loc(r, ["owner"]);
+    const b = z.object({ cancellationWindowMinutes: z.number().int().min(0).max(60) }).parse(r.body);
+    await asyncDb.run("UPDATE locations SET cancellation_window_minutes=? WHERE id=? AND tenant_id=?", [b.cancellationWindowMinutes, l.id, l.tenant_id]);
+    await auditAsync(u.id, l.tenant_id, "operations.cancellation_window.updated", l.id, b);
+    return { cancellationWindowMinutes: b.cancellationWindowMinutes };
+  });
+  app.post("/api/locations/:lid/orders/:oid/items/:itemId/cancel", async (r) => {
+    const { l, u } = await loc(r);
+    const b = z.object({ quantity: z.number().int().min(1).max(20), idempotencyKey: z.uuid(), reason: z.enum(["Customer requested", "Ordered by mistake", "Item unavailable", "Customer escalation", "Kitchen issue", "Service recovery", "Other"]), note: z.string().max(300).default(""), override: z.boolean().default(false) }).parse(r.body);
+    const privileged = hasPermission(u, "orders.cancel_locked_item");
+    const override = b.override && privileged;
+    const result = await asyncDb.transaction((tx) => operationsRepository.cancelItem(tx, { id: id(), locationId: l.id, tenantId: l.tenant_id, orderId: (r.params as any).oid, itemId: (r.params as any).itemId, quantity: b.quantity, idempotencyKey: b.idempotencyKey, actorId: u.id, actorRole: u.role, reason: b.reason, note: b.note, override }));
+    realtime.emit({ id: id(), tenantId: l.tenant_id, locationId: l.id, kind: "order.updated", audience: "kitchen", data: { orderId: (r.params as any).oid, itemId: (r.params as any).itemId, itemCancelled: true, itemName: result.itemName, tableName: result.tableName, cancelledQuantity: result.cancelledQuantity } });
+    return result;
+  });
+  app.post("/api/locations/:lid/orders/:oid/refunds/:refundId/complete-manual", async (r) => {
+    const { l, u } = await loc(r);
+    requirePermission(u, "billing.manage");
+    const b = z.object({ note: z.string().min(3).max(300) }).parse(r.body);
+    const result = await asyncDb.transaction((tx) => operationsRepository.completeManualRefund(tx, { locationId: l.id, orderId: (r.params as any).oid, refundId: (r.params as any).refundId, actorId: u.id, note: b.note }));
+    await auditAsync(u.id, l.tenant_id, "refund.manual.completed", (r.params as any).refundId, b);
+    return result;
   });
   app.post("/api/public/:slug/requests", async (r) => {
     const l = await publicLoc((r.params as any).slug);
@@ -1333,6 +1666,36 @@ export async function createApp(
       message: "Request received; the business must confirm availability.",
     };
   });
+  app.post("/api/public/:slug/service-requests", { config: { rateLimit: { max: 20, timeWindow: "1 minute" } } }, async (r) => {
+    const l = await publicLoc((r.params as any).slug);
+    const b = z.object({ type: z.enum(["WAITER", "WATER", "CUTLERY", "BILL"]), tableId: z.uuid(), tableToken: z.string().min(16).max(120), quantity: z.number().int().min(1).max(10).default(1) }).parse(r.body);
+    const table = await tableRepository.getEnabledByToken(l.id, b.tableToken);
+    if (!table || table.id !== b.tableId) fail(403, "Table context is invalid");
+    if (b.type === "WATER" && b.quantity > 1 && !(profileSchema.parse(JSON.parse(l.profile)) as any).waterQuantityEnabled) fail(400, "Quantity selection is unavailable");
+    const order = await serviceRequestRepository.activeOrderForTable(table.id, l.id);
+    if (b.type === "BILL" && !order) fail(409, "There is no active order for this table");
+    const requestId = id();
+    const created = await asyncDb.transaction((tx) => serviceRequestRepository.createService(tx, { id: requestId, publicToken: publicId(), tenantId: l.tenant_id, locationId: l.id, tableId: table.id, orderId: order?.id, type: b.type, quantity: b.quantity }));
+    if (b.type === "BILL" && order) await asyncDb.run("UPDATE orders SET bill_requested_at=COALESCE(bill_requested_at,CURRENT_TIMESTAMP) WHERE id=? AND location_id=?", [order.id, l.id]);
+    if (created.created) realtime.emit({ id: id(), tenantId: l.tenant_id, locationId: l.id, kind: "service_request.created", audience: "service", data: { requestId: created.request.id, publicToken: created.request.public_token, type: b.type, quantity: b.quantity, tableName: table.name } });
+    return { request: { id: created.request.id, publicToken: created.request.public_token, type: created.request.type, quantity: created.request.quantity, status: created.request.status, tableName: table.name, totalPaise: order ? Number(order.amount_paise) : null }, deduplicated: !created.created };
+  });
+  app.get("/api/public/service-requests/:token", async (r) => {
+    const request = await serviceRequestRepository.getByToken(String((r.params as any).token));
+    if (!request) fail(404, "Service request not found");
+    return { id: request.id, type: request.type, quantity: Number(request.quantity), status: request.status, acknowledgedAt: request.acknowledged_at, completedAt: request.completed_at };
+  });
+  app.get("/api/public/service-requests/:token/bill", async (r) => {
+    const request = await serviceRequestRepository.getByToken(String((r.params as any).token));
+    if (!request || request.type !== "BILL") fail(404, "Bill request not found");
+    const order = request.order_id ? await orderRepository.getById(request.order_id, request.location_id) : undefined;
+    if (!order) fail(404, "Bill unavailable");
+    const view = await orderRepository.publicView(order);
+    const refunds = await asyncDb.all<any>("SELECT r.id,r.order_item_id,r.amount_paise,r.currency,r.status,r.reason,r.created_at,r.processed_at,oi.item_name_snapshot FROM refunds r LEFT JOIN order_items oi ON oi.id=r.order_item_id WHERE r.order_id=? AND r.location_id=? ORDER BY r.created_at ASC", [order.id, request.location_id]);
+    const refundTotal = refunds.reduce((sum: number, item: any) => sum + Number(item.amount_paise || 0), 0);
+    const totalPaise = Number(view.amount_paise);
+    return { orderNumber: view.publicOrderNumber, tableName: view.tableName, items: view.lines, subtotalPaise: Math.max(0, totalPaise - Number(view.tax_paise || 0) - Number(view.packaging_fee_paise || 0) - Number(view.service_fee_paise || 0) - Number(view.delivery_fee_paise || 0) + Number(view.discount_paise || 0)), discountPaise: Number(view.discount_paise || 0), taxPaise: Number(view.tax_paise || 0), packagingFeePaise: Number(view.packaging_fee_paise || 0), serviceFeePaise: Number(view.service_fee_paise || 0), deliveryFeePaise: Number(view.delivery_fee_paise || 0), totalPaise, originalPaidPaise: totalPaise + refundTotal, netPaidPaise: totalPaise, refunds, paymentState: view.payment_state };
+  });
   app.get("/api/locations/:lid/requests", async (r) =>
     serviceRequestRepository.list((await loc(r)).l.id),
   );
@@ -1346,10 +1709,38 @@ export async function createApp(
     });
     return { ok: true };
   });
+  app.get("/api/locations/:lid/service-requests", async (r) => {
+    const { l, u } = await loc(r);
+    requirePermission(u, "service_requests.view");
+    return { requests: await serviceRequestRepository.listService(l.id) };
+  });
+  app.post("/api/locations/:lid/service-requests/:rid/acknowledge", async (r) => {
+    const { l, u } = await loc(r);
+    requirePermission(u, "service_requests.manage");
+    const rid = (r.params as any).rid;
+    await asyncDb.transaction(async (tx) => { if (!(await serviceRequestRepository.acknowledge(tx, rid, l.id, u.id)).rowCount) fail(409, "Request is no longer available"); await auditAsync(u.id, l.tenant_id, "service_request.acknowledged", rid, {}, tx); });
+    realtime.emit({ id: id(), tenantId: l.tenant_id, locationId: l.id, kind: "service_request.updated", audience: "service", data: { requestId: rid, status: "ACKNOWLEDGED" } });
+    return { ok: true };
+  });
+  app.post("/api/locations/:lid/service-requests/:rid/complete", async (r) => {
+    const { l, u } = await loc(r);
+    requirePermission(u, "service_requests.manage");
+    const rid = (r.params as any).rid;
+    await asyncDb.transaction(async (tx) => { if (!(await serviceRequestRepository.complete(tx, rid, l.id, u.id)).rowCount) fail(409, "Request is no longer in progress"); await auditAsync(u.id, l.tenant_id, "service_request.completed", rid, {}, tx); });
+    realtime.emit({ id: id(), tenantId: l.tenant_id, locationId: l.id, kind: "service_request.updated", audience: "service", data: { requestId: rid, status: "COMPLETED" } });
+    return { ok: true };
+  });
   app.get("/api/locations/:lid/analytics", async (r) => {
     const { l } = await loc(r, ["owner", "manager"]);
     await paid(l.tenant_id, "analytics");
     return analyticsRepository.list(l.id);
+  });
+  app.get("/api/locations/:lid/operations/metrics", async (r) => {
+    const { l } = await loc(r, ["owner", "manager"]);
+    await paid(l.tenant_id, "analytics");
+    const q = z.object({ range: z.enum(["today", "yesterday", "7d", "custom"]).default("today"), from: z.iso.datetime().optional() }).parse(r.query);
+    const from = q.from || (q.range === "7d" ? new Date(Date.now() - 7 * 86400000).toISOString() : q.range === "yesterday" ? new Date(Date.now() - 2 * 86400000).toISOString() : new Date(new Date().setHours(q.range === "today" ? 0 : 0, 0, 0, 0)).toISOString());
+    return operationsRepository.metrics(l.id, from);
   });
   app.get("/api/locations/:lid/audit", async (r) => {
     const { l } = await loc(r, ["owner"]);
@@ -1357,22 +1748,26 @@ export async function createApp(
   });
   app.get("/api/tenants/:tid/staff", async (r) => {
     const tid = (r.params as any).tid;
-    await membership(r, tid, ["owner"]);
+    const u = await membership(r, tid, ["owner", "manager"]);
+    requirePermission(u, "staff.manage");
     return staffRepository.list(tid);
   });
   app.get("/api/tenants/:tid/staff/invitations", async (r) => {
     const tid = (r.params as any).tid;
-    await membership(r, tid, ["owner"]);
+    const u = await membership(r, tid, ["owner", "manager"]);
+    requirePermission(u, "staff.manage");
     return staffRepository.listInvitations(tid);
   });
   app.post("/api/tenants/:tid/staff/invitations", async (r) => {
     const tid = (r.params as any).tid,
-      u = await membership(r, tid, ["owner"]);
+      u = await membership(r, tid, ["owner", "manager"]);
+    requirePermission(u, "staff.manage");
     const t = await paid(tid, "staff");
     const b = z.object({
       name: z.string().trim().min(2).max(100),
       email: z.email().transform((s) => s.toLowerCase()),
       role: z.enum(["manager", "staff"]),
+      operationalRole: z.enum(["manager", "kitchen", "service", "cashier"]).default("service"),
       permissions: z.record(z.string().max(60), z.boolean()).default({}),
       locationId: z.string().uuid().nullable().optional(),
     }).parse(r.body);
@@ -1390,7 +1785,7 @@ export async function createApp(
       await tx.run("UPDATE tenants SET name=name WHERE id=?", [tid]);
       if (Number((await tx.get<{ n: number }>("SELECT count(*) n FROM memberships WHERE tenant_id=? AND role!='owner'", [tid]))?.n ?? 0) >= t.entitlements.staff)
         fail(402, "Prime includes up to 5 staff accounts.", "STAFF_LIMIT_REACHED");
-      await tx.run("INSERT INTO staff_invitations(id,tenant_id,location_id,email,name,role,permissions,token_hash,expires_at,invited_by) VALUES (?,?,?,?,?,?,?,?,?,?)", [invitationId, tid, b.locationId || null, b.email, b.name, b.role, JSON.stringify(b.permissions), hash(token), expires, u.id]);
+      await tx.run("INSERT INTO staff_invitations(id,tenant_id,location_id,email,name,role,operational_role,permissions,token_hash,expires_at,invited_by) VALUES (?,?,?,?,?,?,?,?,?,?,?)", [invitationId, tid, b.locationId || null, b.email, b.name, b.role, b.operationalRole, JSON.stringify(b.permissions), hash(token), expires, u.id]);
       await auditAsync(u.id, tid, "staff.invited", invitationId, { email: b.email, role: b.role }, tx);
     });
     await sendMail(b.email, `You're invited to join ${t.name} on 1QR Prime`, `${u.email} invited you to join ${t.name}.\n\nRole: ${b.role}\nThis invitation expires in 72 hours.\n\nAccept invitation: ${c.PUBLIC_ORIGIN}/staff/invite/${token}\n\nIf you did not expect this invitation, you can ignore it.`);
@@ -1402,7 +1797,7 @@ export async function createApp(
     const invitation = await staffRepository.invitation(hash(token));
     if (!invitation || invitation.revoked_at || invitation.accepted_at || new Date(invitation.expires_at).getTime() <= Date.now())
       fail(400, "Invitation expired or unavailable");
-    return { email: invitation.email, name: invitation.name, role: invitation.role, expiresAt: invitation.expires_at };
+    return { email: invitation.email, name: invitation.name, role: invitation.role, operationalRole: invitation.operational_role || "service", expiresAt: invitation.expires_at };
   });
   app.post("/api/staff/invitations/:token/accept", async (r, reply) => {
     const token = String((r.params as any).token);
@@ -1430,7 +1825,7 @@ export async function createApp(
       if (Number((await tx.get<{ n: number }>("SELECT count(*) n FROM memberships WHERE tenant_id=? AND role!='owner'", [invitation.tenant_id]))?.n ?? 0) >= maxStaff)
         fail(402, "Prime includes up to 5 staff accounts.", "STAFF_LIMIT_REACHED");
       if (!existing) await tx.run("INSERT INTO users(id,email,password) VALUES (?,?,?)", [actor.id, actor.email, actor.password]);
-      await tx.run("INSERT INTO memberships(user_id,tenant_id,role,permissions) VALUES (?,?,?,?) ON CONFLICT(user_id,tenant_id) DO UPDATE SET role=excluded.role,permissions=excluded.permissions", [actor.id, invitation.tenant_id, invitation.role, invitation.permissions || "{}"]);
+      await tx.run("INSERT INTO memberships(user_id,tenant_id,role,operational_role,permissions) VALUES (?,?,?,?,?) ON CONFLICT(user_id,tenant_id) DO UPDATE SET role=excluded.role,operational_role=excluded.operational_role,permissions=excluded.permissions", [actor.id, invitation.tenant_id, invitation.role, invitation.operational_role || "service", invitation.permissions || "{}"]);
       await tx.run("UPDATE staff_invitations SET accepted_at=?,updated_at=? WHERE id=? AND accepted_at IS NULL AND revoked_at IS NULL", [new Date().toISOString(), new Date().toISOString(), invitation.id]);
       await auditAsync(actor.id, invitation.tenant_id, "staff.invitation.accepted", invitation.id, { role: invitation.role }, tx);
     });
@@ -1438,7 +1833,8 @@ export async function createApp(
     return { ok: true, status: "accepted" };
   });
   app.post("/api/tenants/:tid/staff/invitations/:iid/revoke", async (r) => {
-    const tid = (r.params as any).tid, u = await membership(r, tid, ["owner"]);
+    const tid = (r.params as any).tid, u = await membership(r, tid, ["owner", "manager"]);
+    requirePermission(u, "staff.manage");
     const iid = (r.params as any).iid;
     await asyncDb.transaction(async (tx) => {
       if (!(await tx.run("UPDATE staff_invitations SET revoked_at=?,updated_at=? WHERE id=? AND tenant_id=? AND accepted_at IS NULL AND revoked_at IS NULL", [new Date().toISOString(), new Date().toISOString(), iid, tid])).rowCount) fail(404, "Invitation not found");
@@ -1448,12 +1844,15 @@ export async function createApp(
   });
   app.post("/api/tenants/:tid/staff", async (r) => {
     const tid = (r.params as any).tid,
-      u = await membership(r, tid, ["owner"]);
+      u = await membership(r, tid, ["owner", "manager"]);
+    requirePermission(u, "staff.manage");
     const t = await paid(tid, "staff");
     const b = z
       .object({
         email: z.email().transform((s) => s.toLowerCase()),
         role: z.enum(["manager", "staff"]),
+        operationalRole: z.enum(["manager", "kitchen", "service", "cashier"]).default("service"),
+        permissions: z.record(z.string().max(60), z.boolean()).default({}),
       })
       .parse(r.body);
     const target = await staffRepository.findUserByEmail(b.email);
@@ -1467,14 +1866,15 @@ export async function createApp(
         if (Number((await tx.get<{ n: number }>("SELECT count(*) n FROM memberships WHERE tenant_id=? AND role!='owner'", [tid]))?.n ?? 0) >= t.entitlements.staff)
           fail(402, "Prime includes up to 5 staff accounts.", "STAFF_LIMIT_REACHED");
       }
-      await staffRepository.upsert(tx, target.id, tid, b.role);
+      await staffRepository.upsert(tx, target.id, tid, b.role, b.operationalRole, JSON.stringify(b.permissions));
       await auditAsync(u.id, tid, "staff.updated", target.id, b, tx);
     });
     return { ok: true };
   });
   app.delete("/api/tenants/:tid/staff/:uid", async (r) => {
     const tid = (r.params as any).tid,
-      u = await membership(r, tid, ["owner"]);
+      u = await membership(r, tid, ["owner", "manager"]);
+    requirePermission(u, "staff.manage");
     const uid = (r.params as any).uid;
     await asyncDb.transaction(async (tx) => {
       if (!(await staffRepository.remove(tx, uid, tid)).rowCount)
@@ -1566,6 +1966,10 @@ export async function createApp(
       q: z.string().trim().max(100).optional(),
     }).parse(r.query);
     return adminRepository.billingPayments({ status: query.status, query: query.q });
+  });
+  app.get("/api/admin/marketing/overview", async (r) => {
+    await admin(r);
+    return adminRepository.marketingOverview();
   });
   app.patch("/api/admin/sales-leads/:id", async (r) => {
     const u = await admin(r, true);

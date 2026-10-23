@@ -113,6 +113,8 @@ export class PaymentRepository {
     idempotencyKey: string;
     orderId?: string;
     amountPaise?: number;
+    customerPhone?: string;
+    tableId?: string;
   }) {
     try {
       return await this.db.transaction(async (tx) => {
@@ -165,8 +167,8 @@ export class PaymentRepository {
           reference,
         };
         await tx.run(
-          "INSERT INTO attempts(id,location_id,order_id,idempotency_key,route_id,snapshot,amount_paise,state) VALUES (?,?,?,?,?,?,?,'confirmation_pending')",
-          [attemptId, input.locationId, input.orderId ?? null, input.idempotencyKey, route.id, JSON.stringify(snapshot), authoritativeAmount ?? null],
+          "INSERT INTO attempts(id,location_id,order_id,idempotency_key,route_id,snapshot,amount_paise,state,customer_phone,table_id) VALUES (?,?,?,?,?,?,?,'confirmation_pending',?,?)",
+          [attemptId, input.locationId, input.orderId ?? null, input.idempotencyKey, route.id, JSON.stringify(snapshot), authoritativeAmount ?? null, input.customerPhone ?? "", input.tableId ?? null],
         );
         await tx.run(
           "INSERT INTO events(location_id,day,kind,count) VALUES (?,date('now'),?,1) ON CONFLICT(location_id,day,kind) DO UPDATE SET count=events.count+1",

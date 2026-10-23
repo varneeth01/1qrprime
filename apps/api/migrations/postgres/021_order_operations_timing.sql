@@ -1,0 +1,17 @@
+ALTER TABLE locations ADD COLUMN IF NOT EXISTS cancellation_window_minutes INTEGER NOT NULL DEFAULT 5;
+ALTER TABLE orders ADD COLUMN IF NOT EXISTS preparation_started_at TIMESTAMPTZ;
+ALTER TABLE orders ADD COLUMN IF NOT EXISTS served_at TIMESTAMPTZ;
+ALTER TABLE orders ADD COLUMN IF NOT EXISTS closed_at TIMESTAMPTZ;
+ALTER TABLE orders ADD COLUMN IF NOT EXISTS bill_requested_at TIMESTAMPTZ;
+ALTER TABLE orders ADD COLUMN IF NOT EXISTS paid_at TIMESTAMPTZ;
+ALTER TABLE order_items ADD COLUMN IF NOT EXISTS placed_at TIMESTAMPTZ;
+ALTER TABLE order_items ADD COLUMN IF NOT EXISTS cancellable_until TIMESTAMPTZ;
+ALTER TABLE order_items ADD COLUMN IF NOT EXISTS cancelled_quantity INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE order_items ADD COLUMN IF NOT EXISTS cancelled_at TIMESTAMPTZ;
+ALTER TABLE order_items ADD COLUMN IF NOT EXISTS cancelled_by TEXT REFERENCES users(id) ON DELETE SET NULL;
+ALTER TABLE order_items ADD COLUMN IF NOT EXISTS cancellation_reason TEXT;
+UPDATE order_items oi SET placed_at=COALESCE(oi.placed_at,o.created_at), cancellable_until=COALESCE(oi.cancellable_until,o.created_at + make_interval(mins => l.cancellation_window_minutes)) FROM orders o JOIN locations l ON l.id=o.location_id WHERE o.id=oi.order_id;
+CREATE INDEX IF NOT EXISTS order_items_cancellation ON order_items(order_id,cancellable_until,cancelled_quantity);
+CREATE TABLE IF NOT EXISTS item_cancellation_idempotency (id TEXT PRIMARY KEY, location_id TEXT NOT NULL REFERENCES locations(id) ON DELETE CASCADE, order_id TEXT NOT NULL REFERENCES orders(id) ON DELETE CASCADE, idempotency_key TEXT NOT NULL, response_json TEXT NOT NULL, created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP, UNIQUE(location_id,idempotency_key));
+CREATE TABLE IF NOT EXISTS refunds (id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL REFERENCES tenants(id) ON DELETE CASCADE, location_id TEXT NOT NULL REFERENCES locations(id) ON DELETE CASCADE, order_id TEXT NOT NULL REFERENCES orders(id) ON DELETE CASCADE, order_item_id TEXT REFERENCES order_items(id) ON DELETE SET NULL, payment_id TEXT, provider_payment_id TEXT, amount_paise BIGINT NOT NULL, currency TEXT NOT NULL DEFAULT 'INR', status TEXT NOT NULL CHECK(status IN ('REQUESTED','PROCESSING','SUCCEEDED','FAILED','MANUAL_REQUIRED')), reason TEXT NOT NULL, note TEXT NOT NULL DEFAULT '', requested_by TEXT NOT NULL REFERENCES users(id), approved_by TEXT REFERENCES users(id), created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP, processed_at TIMESTAMPTZ);
+CREATE INDEX IF NOT EXISTS refunds_order ON refunds(order_id,created_at);

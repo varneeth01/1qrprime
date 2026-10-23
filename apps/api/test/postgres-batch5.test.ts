@@ -7,7 +7,7 @@ import { envSchema } from "../src/config.js";
 import { createPostgresDatabase, resetPostgresPoolForTests } from "../src/async-db.js";
 import { PaymentRepository } from "../src/repositories/payment-repository.js";
 
-const connectionString = process.env.POSTGRES_TEST_URL || process.env.DIRECT_URL;
+const connectionString = process.env.POSTGRES_TEST_URL;
 
 test("PostgreSQL Batch 5 payment routes, attempts, integrity and rollback", { skip: !connectionString }, async () => {
   const rawSqlite = openDb(":memory:");
@@ -75,6 +75,7 @@ test("PostgreSQL Batch 5 payment routes, attempts, integrity and rollback", { sk
     const general = await call("POST", `/api/public/${location.slug}/payments`, undefined, {
       idempotencyKey: randomUUID(),
       amountPaise: 10000,
+      customerPhone: "+919876543210",
     });
     assert.equal(general.statusCode, 200);
     assert.equal(general.json().state, "confirmation_pending");
@@ -96,13 +97,14 @@ test("PostgreSQL Batch 5 payment routes, attempts, integrity and rollback", { sk
     const orderPayment = await call("POST", `/api/orders/${order.id}/payments`, undefined, {
       idempotencyKey: randomUUID(),
       amountPaise: 1,
+      customerPhone: "+919876543210",
     }, { "x-order-token": order.accessToken });
     assert.equal(orderPayment.statusCode, 200);
     assert.equal(orderPayment.json().snapshot.amountPaise, order.amount_paise);
     assert.notEqual(orderPayment.json().snapshot.amountPaise, 1);
 
     const retryKey = randomUUID();
-    const retries = await Promise.all(Array.from({ length: 2 }, () => call("POST", `/api/public/${location.slug}/payments`, undefined, { idempotencyKey: retryKey, amountPaise: 5000 })));
+    const retries = await Promise.all(Array.from({ length: 2 }, () => call("POST", `/api/public/${location.slug}/payments`, undefined, { idempotencyKey: retryKey, amountPaise: 5000, customerPhone: "+919876543210" })));
     assert.equal(retries[0].statusCode, 200);
     assert.equal(retries[1].statusCode, 200);
     assert.equal(retries[0].json().id, retries[1].json().id);

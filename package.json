@@ -27,6 +27,7 @@
     "qa:seed": "tsx scripts/seed-qa.ts",
     "qa:provision:production": "tsx scripts/provision-qa-production.ts",
     "test": "npm run test -w apps/api",
+    "test:postgres": "node scripts/test-postgres.mjs",
     "typecheck": "npm run typecheck --workspaces --if-present",
     "seed:restaurant": "tsx scripts/seed-restaurant.ts"
   },
