@@ -33,6 +33,7 @@ EXPOSE 3000
 CMD ["sh","-c","node scripts/postgres-migrate.mjs && exec node apps/api/dist/server.js"]
 
 FROM deps AS web-build
+ARG GOOGLE_SITE_VERIFICATION
 COPY apps/web apps/web
 # The web client shares validation, product-state, and error contracts with
 # the repository-level shared package. Keep that source in the container build
