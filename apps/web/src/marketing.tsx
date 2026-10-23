@@ -144,9 +144,7 @@ function Meta({ path, article }: { path: string; article?: Article }) {
 
     setMeta('meta[name="description"]', "content", meta.description);
     setMeta('meta[name="robots"]', "content", "index,follow,max-image-preview:large,max-snippet:-1,max-video-preview:-1");
-    const keywordMeta = document.querySelector('meta[name="keywords"]') as HTMLMetaElement | null;
-    if (meta.keywords) setMeta('meta[name="keywords"]', "content", meta.keywords);
-    else keywordMeta?.remove();
+    document.querySelector('meta[name="keywords"]')?.remove();
     setMeta('meta[property="og:title"]', "content", meta.title);
     setMeta('meta[property="og:description"]', "content", meta.description);
     setMeta('meta[property="og:type"]', "content", article ? "article" : "website");
@@ -195,8 +193,8 @@ function Meta({ path, article }: { path: string; article?: Article }) {
           description: article.description,
           url: canonicalUrl,
           mainEntityOfPage: canonicalUrl,
-          datePublished: article.published,
-          dateModified: article.updated || article.published,
+          datePublished: article.published || "2026-10-23",
+          dateModified: article.updated || article.published || "2026-10-23",
           author: { "@type": "Organization", name: "1QR Prime Editorial Team", url: `${SITE_ORIGIN}/about` },
           publisher: { "@type": "Organization", name: "1QR Prime", url: SITE_ORIGIN },
           inLanguage: "en-IN",
@@ -364,7 +362,7 @@ function ArticlePage({ article }: { article: Article }) {
       <span className="marketing-eyebrow">{article.category} · {article.read}</span>
       <h1>{article.title}</h1>
       <p>{article.description}</p>
-      {(article.published || article.updated) && <div className="article-byline"><span>By <a href="/about">1QR Prime Editorial Team</a></span>{article.published && <span>Published {new Date(article.published + "T00:00:00").toLocaleDateString("en-IN", { day: "numeric", month: "long", year: "numeric" })}</span>}{article.updated && article.updated !== article.published && <span>Updated {new Date(article.updated + "T00:00:00").toLocaleDateString("en-IN", { day: "numeric", month: "long", year: "numeric" })}</span>}</div>}
+      <div className="article-byline"><span>By <a href="/about">1QR Prime Editorial Team</a></span><span>Published {new Date((article.published || "2026-10-23") + "T00:00:00").toLocaleDateString("en-IN", { day: "numeric", month: "long", year: "numeric" })}</span>{article.updated && article.updated !== (article.published || "2026-10-23") && <span>Updated {new Date(article.updated + "T00:00:00").toLocaleDateString("en-IN", { day: "numeric", month: "long", year: "numeric" })}</span>}</div>
     </header>
     <article className="article-body"><GeneratedArticleBody article={article} /></article>
     {related.length > 0 && <section className="article-related"><span className="marketing-eyebrow">Related reading</span>{related.map((item) => <a key={item.slug} href={`/blog/${item.slug}`}><strong>{item.title}</strong><ArrowRight size={15} /></a>)}</section>}
