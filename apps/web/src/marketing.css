@@ -47,3 +47,145 @@
   .marketing-section > h2, .intro-section h2, .section-heading h2, .menu-story h2 { font-size: 43px; }
   .marketing-hero .product-visual { transform: scale(.78); transform-origin: left center; }
 }
+
+
+/* Mobile-first public site v6 — no scaled desktop canvas on phones. */
+@media (max-width: 900px) {
+  .marketing-header {
+    height: 64px;
+    padding: 0 16px;
+    background: rgba(5,5,5,.96);
+  }
+  .marketing-menu {
+    display: grid;
+    place-items: center;
+    width: 42px;
+    height: 42px;
+    padding: 0;
+    color: #fff;
+    background: rgba(255,255,255,.06);
+    border: 1px solid rgba(255,255,255,.1);
+    border-radius: 12px;
+  }
+  .marketing-actions > .marketing-signin,
+  .marketing-actions > .marketing-cta { display: none; }
+  .marketing-nav {
+    position: fixed;
+    z-index: 60;
+    top: 72px;
+    left: 12px;
+    right: 12px;
+    display: none;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 4px;
+    margin: 0;
+    padding: 12px;
+    color: #fff;
+    background: rgba(10,10,11,.98);
+    border: 1px solid rgba(255,255,255,.1);
+    border-radius: 16px;
+    box-shadow: 0 24px 70px rgba(0,0,0,.42);
+  }
+  .marketing-nav.open { display: flex; }
+  .marketing-nav a {
+    width: 100%;
+    min-height: 46px;
+    display: flex;
+    align-items: center;
+    padding: 0 13px;
+    border-radius: 10px;
+    font-size: 14px;
+  }
+  .marketing-nav a:hover { background: rgba(255,255,255,.06); }
+  .marketing-nav .mobile-only { display: flex; }
+  .marketing-nav .marketing-cta {
+    justify-content: center;
+    margin-top: 6px;
+    color: #111;
+    background: #fff;
+  }
+
+  .marketing-hero {
+    grid-template-columns: 1fr;
+    min-height: auto;
+    gap: 46px;
+    padding: 112px 20px 68px;
+  }
+  .hero-copy { max-width: 680px; }
+  .hero-copy h1, .subpage-hero h1, .marketing-cta-section h2 {
+    font-size: clamp(46px, 10vw, 70px);
+    line-height: .96;
+    letter-spacing: -.07em;
+  }
+  .hero-copy p { max-width: 560px; font-size: 17px; line-height: 1.55; }
+  .hero-actions { gap: 12px; }
+  .product-visual {
+    width: 100%;
+    max-width: 620px;
+    min-height: 520px;
+    margin: 0 auto;
+    transform: none !important;
+  }
+
+  .marketing-section,
+  .intro-section,
+  .dark-section,
+  .product-section,
+  .menu-story,
+  .pricing-section,
+  .faq-section,
+  .marketing-cta-section { padding: 82px 20px; }
+  .marketing-section > h2,
+  .intro-section h2,
+  .section-heading h2,
+  .menu-story h2 { font-size: clamp(38px, 8vw, 56px); }
+  .feature-strip,
+  .split-story,
+  .pricing-layout { grid-template-columns: 1fr; }
+  .footer-links { grid-template-columns: repeat(2, minmax(0,1fr)); }
+}
+
+@media (max-width: 560px) {
+  .marketing-brand { font-size: 15px; }
+  .marketing-mark { width: 30px; height: 30px; }
+  .marketing-hero { padding: 100px 16px 58px; gap: 34px; }
+  .hero-copy h1, .subpage-hero h1, .marketing-cta-section h2 {
+    font-size: clamp(42px, 13.4vw, 54px);
+  }
+  .hero-copy p { font-size: 16px; }
+  .hero-actions { display: grid; grid-template-columns: 1fr; }
+  .hero-actions .marketing-button { width: 100%; min-height: 50px; }
+  .hero-actions .marketing-text-link { min-height: 44px; justify-content: center; }
+
+  .product-visual { min-height: 0; max-width: 100%; overflow: visible; }
+  .product-browser { display: none; }
+  .product-phone {
+    position: relative;
+    inset: auto;
+    right: auto;
+    bottom: auto;
+    width: min(100%, 300px);
+    min-height: 500px;
+    margin: 0 auto;
+    transform: none;
+  }
+
+  .marketing-section,
+  .intro-section,
+  .dark-section,
+  .product-section,
+  .menu-story,
+  .pricing-section,
+  .faq-section,
+  .marketing-cta-section { padding: 68px 16px; }
+  .marketing-section > h2,
+  .intro-section h2,
+  .section-heading h2,
+  .menu-story h2 { font-size: clamp(36px, 11vw, 46px); }
+  .feature-strip { margin-top: 36px; }
+  .feature-strip > div { padding-right: 0; }
+  .price-card, .custom-card { padding: 22px 18px; }
+  .marketing-footer { padding: 46px 16px 22px; }
+  .footer-links { grid-template-columns: 1fr 1fr; gap: 20px 12px; }
+}
