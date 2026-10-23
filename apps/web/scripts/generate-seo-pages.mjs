@@ -1,7 +1,8 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
-import { dirname, join, resolve } from "node:path";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 
-const dist = resolve(process.cwd(), "dist");
+const dist = fileURLToPath(new URL("../dist/", import.meta.url));
 const template = await readFile(join(dist, "index.html"), "utf8");
 const origin = "https://1qrprime.com";
 
