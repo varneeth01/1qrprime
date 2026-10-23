@@ -11,5 +11,6 @@ Disallow: /api
 Disallow: /staff/
 Disallow: /payment-routes/
 
-Host: 1qrprime.com
 Sitemap: https://1qrprime.com/sitemap.xml
+Sitemap: https://1qrprime.com/sitemap-pages.xml
+Sitemap: https://1qrprime.com/sitemap-blog.xml

@@ -49,10 +49,14 @@ import { emailFormatError, normalizeSlugSuggestion, passwordFormatError, slugFor
 import { SLUG_AVAILABILITY_PATH } from "../../../shared/slug";
 import { normalizeCustomerPhone } from "../../../shared/customer-phone";
 import { canRenderMerchantNavigation, resolveProductState } from "../../../shared/product-state";
-import { isMarketingPath, MarketingRouter } from "./marketing";
+import { isPublicMarketingPath } from "./public-marketing-paths";
 import { MarketingWorkspace } from "./marketing-workspace";
 import "./style.css";
 import "./marketing.css";
+const LazyMarketingRouter = React.lazy(async () => {
+  const module = await import("./marketing");
+  return { default: module.MarketingRouter };
+});
 function ErrorBox({ error }: { error: string }) {
   return error ? (
     <div role="alert" className="error">
@@ -406,7 +410,7 @@ function App() {
     }
   }, [me?.id, me?.adminRole, me?.locations?.length]);
   const pathname = window.location.pathname;
-  if (isMarketingPath(pathname)) return <MarketingRouter path={pathname} />;
+  if (isPublicMarketingPath(pathname)) return <React.Suspense fallback={<div className="boot-screen"><Brand /><Skeleton className="boot-line" /><p>Opening 1QR Prime</p></div>}><LazyMarketingRouter path={pathname} /></React.Suspense>;
   if (pathname === "/login" || pathname === "/signup") {
     if (loading) return <div className="boot-screen"><Brand /><Skeleton className="boot-line" /><p>Preparing your business</p></div>;
     if (!me) return <Auth done={refresh} initialRegister={pathname === "/signup"} />;

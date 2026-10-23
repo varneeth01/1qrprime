@@ -74,6 +74,8 @@ services:
       context: .
       dockerfile: deploy/Dockerfile
       target: web-runtime
+      args:
+        GOOGLE_SITE_VERIFICATION: ${GOOGLE_SITE_VERIFICATION:-}
     depends_on:
       api:
         condition: service_healthy

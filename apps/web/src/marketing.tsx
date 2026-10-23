@@ -1,11 +1,27 @@
 import React, { useEffect, useState } from "react";
+import { seoLandings } from "./seo-landings";
+import { isPublicMarketingPath } from "./public-marketing-paths";
 import {
   ArrowRight, ArrowUpRight, Check, ChevronDown, ChevronRight, Menu,
   QrCode, ShoppingBag, Smartphone, Store, Wallet, Users, BarChart3,
   X, Sparkles,
 } from "lucide-react";
 
-type Article = { slug: string; category: string; title: string; description: string; read: string; body: React.ReactNode };
+type Article = {
+  slug: string;
+  category: string;
+  title: string;
+  description: string;
+  read: string;
+  body?: React.ReactNode;
+  keywords?: string[];
+  published?: string;
+  updated?: string;
+  intro?: string;
+  sections?: Array<{ title: string; paragraphs: string[] }>;
+  takeaways?: string[];
+  faq?: Array<{ q: string; a: string }>;
+};
 
 const articles: Article[] = [
   {
@@ -52,7 +68,8 @@ const articles: Article[] = [
   },
 ];
 
-const marketingPages = new Set(["/", "/features", "/pricing", "/restaurants", "/cafes", "/hotels", "/blog", "/contact", "/support", "/privacy", "/terms"]);
+
+const marketingPages = new Set(["/", "/features", "/pricing", "/restaurants", "/cafes", "/hotels", "/blog", "/contact", "/support", "/privacy", "/terms", ...Object.keys(seoLandings)]);
 const SITE_ORIGIN = "https://1qrprime.com";
 const pageMeta: Record<string, { title: string; description: string; keywords?: string }> = {
   "/": {
@@ -93,11 +110,24 @@ const pageMeta: Record<string, { title: string; description: string; keywords?: 
   "/privacy": { title: "Privacy Policy | 1QR Prime", description: "How 1QR Prime handles merchant account, business, customer-page and operational data." },
   "/terms": { title: "Terms of Service | 1QR Prime", description: "Terms for using the 1QR Prime merchant workspace and public business QR services." },
 };
+Object.assign(
+  pageMeta,
+  Object.fromEntries(
+    Object.entries(seoLandings).map(([path, page]) => [
+      path,
+      { title: page.title, description: page.description, keywords: page.keywords.join(", ") },
+    ]),
+  ),
+);
 
 function Meta({ path, article }: { path: string; article?: Article }) {
   useEffect(() => {
     const meta = article
-      ? { title: `${article.title} | 1QR Prime`, description: article.description, keywords: undefined }
+      ? {
+          title: `${article.title} | 1QR Prime`,
+          description: article.description,
+          keywords: article.keywords?.join(", "),
+        }
       : pageMeta[path] || pageMeta["/"];
     const canonicalUrl = `${SITE_ORIGIN}${path === "/" ? "/" : path}`;
     document.title = meta.title;
@@ -113,9 +143,7 @@ function Meta({ path, article }: { path: string; article?: Article }) {
 
     setMeta('meta[name="description"]', "content", meta.description);
     setMeta('meta[name="robots"]', "content", "index,follow,max-image-preview:large,max-snippet:-1,max-video-preview:-1");
-    const keywordMeta = document.querySelector('meta[name="keywords"]') as HTMLMetaElement | null;
-    if (meta.keywords) setMeta('meta[name="keywords"]', "content", meta.keywords);
-    else keywordMeta?.remove();
+    document.querySelector('meta[name="keywords"]')?.remove();
     setMeta('meta[property="og:title"]', "content", meta.title);
     setMeta('meta[property="og:description"]', "content", meta.description);
     setMeta('meta[property="og:type"]', "content", article ? "article" : "website");
@@ -139,57 +167,95 @@ function Meta({ path, article }: { path: string; article?: Article }) {
     const schema = document.createElement("script");
     schema.id = schemaId;
     schema.type = "application/ld+json";
-    schema.textContent = JSON.stringify(
-      article
-        ? {
-            "@context": "https://schema.org",
-            "@type": "BlogPosting",
-            headline: article.title,
-            description: article.description,
-            url: canonicalUrl,
-            mainEntityOfPage: canonicalUrl,
-            author: { "@type": "Organization", name: "1QR Prime", url: SITE_ORIGIN },
-            publisher: { "@type": "Organization", name: "1QR Prime", url: SITE_ORIGIN },
-          }
-        : path === "/"
-          ? [
-              {
-                "@context": "https://schema.org",
-                "@type": "Organization",
-                name: "1QR Prime",
-                url: SITE_ORIGIN,
-                description: "One permanent master QR for menus, orders, payments and customer actions.",
-                areaServed: { "@type": "Country", name: "India" },
-              },
-              {
-                "@context": "https://schema.org",
-                "@type": "WebSite",
-                name: "1QR Prime",
-                url: SITE_ORIGIN,
-                inLanguage: "en-IN",
-              },
-              {
-                "@context": "https://schema.org",
-                "@type": "SoftwareApplication",
-                name: "1QR Prime",
-                applicationCategory: "BusinessApplication",
-                operatingSystem: "Web",
-                url: SITE_ORIGIN,
-                description: meta.description,
-                offers: { "@type": "Offer", price: "599", priceCurrency: "INR", category: "subscription" },
-              },
-            ]
-          : {
+
+    const breadcrumb = path !== "/"
+      ? {
+          "@context": "https://schema.org",
+          "@type": "BreadcrumbList",
+          itemListElement: article
+            ? [
+                { "@type": "ListItem", position: 1, name: "Journal", item: `${SITE_ORIGIN}/blog` },
+                { "@type": "ListItem", position: 2, name: article.title, item: canonicalUrl },
+              ]
+            : [
+                { "@type": "ListItem", position: 1, name: "1QR Prime", item: SITE_ORIGIN },
+                { "@type": "ListItem", position: 2, name: meta.title, item: canonicalUrl },
+              ],
+        }
+      : null;
+
+    const primarySchema = article
+      ? {
+          "@context": "https://schema.org",
+          "@type": "BlogPosting",
+          headline: article.title,
+          description: article.description,
+          url: canonicalUrl,
+          mainEntityOfPage: canonicalUrl,
+          datePublished: article.published || "2026-10-23",
+          dateModified: article.updated || article.published || "2026-10-23",
+          author: { "@type": "Organization", name: "1QR Prime Editorial Team", url: `${SITE_ORIGIN}/about` },
+          publisher: { "@type": "Organization", name: "1QR Prime", url: SITE_ORIGIN },
+          inLanguage: "en-IN",
+        }
+      : path === "/"
+        ? [
+            {
               "@context": "https://schema.org",
-              "@type": "WebPage",
-              name: meta.title,
-              description: meta.description,
-              url: canonicalUrl,
-              isPartOf: { "@type": "WebSite", name: "1QR Prime", url: SITE_ORIGIN },
+              "@type": "Organization",
+              name: "1QR Prime",
+              alternateName: ["1QRPrime", "1 QR Prime", "One QR Prime", "OneQR Prime"],
+              url: SITE_ORIGIN,
+              logo: `${SITE_ORIGIN}/apple-touch-icon.png`,
+              description: "One permanent master QR for menus, orders, payments and customer actions.",
+              areaServed: { "@type": "Country", name: "India" },
+            },
+            {
+              "@context": "https://schema.org",
+              "@type": "WebSite",
+              name: "1QR Prime",
+              alternateName: ["1QRPrime", "1 QR Prime", "One QR Prime"],
+              url: SITE_ORIGIN,
               inLanguage: "en-IN",
             },
+            {
+              "@context": "https://schema.org",
+              "@type": "SoftwareApplication",
+              name: "1QR Prime",
+              alternateName: "One QR Prime",
+              applicationCategory: "BusinessApplication",
+              operatingSystem: "Web",
+              url: SITE_ORIGIN,
+              description: meta.description,
+              offers: { "@type": "Offer", price: "599", priceCurrency: "INR", category: "subscription" },
+            },
+          ]
+        : {
+            "@context": "https://schema.org",
+            "@type": "WebPage",
+            name: meta.title,
+            description: meta.description,
+            url: canonicalUrl,
+            isPartOf: { "@type": "WebSite", name: "1QR Prime", url: SITE_ORIGIN },
+            inLanguage: "en-IN",
+          };
+
+    schema.textContent = JSON.stringify(
+      Array.isArray(primarySchema)
+        ? [...primarySchema, ...(breadcrumb ? [breadcrumb] : [])]
+        : breadcrumb
+          ? [primarySchema, breadcrumb]
+          : primarySchema,
     );
     document.head.appendChild(schema);
+
+    let describedBy = document.querySelector('link[rel="describedby"]') as HTMLLinkElement | null;
+    if (!describedBy) {
+      describedBy = document.createElement("link");
+      describedBy.rel = "describedby";
+      document.head.appendChild(describedBy);
+    }
+    describedBy.href = "/llms.txt";
 
     return () => {
       document.title = "1QR Prime — One QR. One master QR.";
@@ -212,7 +278,23 @@ function Landing() {
   return <><Meta path="/" /><MarketingHeader /><main className="marketing-home"><section className="marketing-hero"><div className="hero-copy"><span className="marketing-eyebrow"><Sparkles size={14} /> 1QR Prime · One master QR for your business</span><h1>One QR.<br /><em>One master QR.</em></h1><p>Your menu, orders, payments and customer actions—connected behind one permanent QR that stays the same as your business changes.</p><div className="hero-actions"><a className="marketing-button light" href="/signup">Start with Prime <ArrowRight size={16} /></a><a className="marketing-text-link" href="#product">See how it works <ArrowRight size={15} /></a></div><small className="hero-note">₹599/month launch price · Built for restaurants, cafés and hotels</small></div><ProductVisual /></section><section className="marketing-section intro-section"><span className="marketing-eyebrow">A better link between you and your guests</span><h2>Print it once.<br /><em>Change everything behind it.</em></h2><p>One permanent QR gives your business a living customer page. Update the menu, payment destination, hours or actions without replacing the thing already on your tables.</p><FeatureStrip /></section><section id="product" className="marketing-section dark-section"><div className="split-story"><div><span className="marketing-eyebrow">From table to order</span><h2>From scan<br /><em>to service.</em></h2><p>No customer app. No account creation. Just a fast, familiar browser experience that gives people the next useful action.</p><a className="marketing-text-link" href="/restaurants">Explore restaurants <ArrowRight size={15} /></a></div><div className="journey"><div><span>01</span><QrCode /><b>Scan</b><small>One permanent QR</small></div><i>→</i><div><span>02</span><Store /><b>Choose</b><small>Menu and actions</small></div><i>→</i><div><span>03</span><ShoppingBag /><b>Serve</b><small>Orders and payment</small></div></div></div></section><section className="marketing-section product-section"><div className="section-heading"><span className="marketing-eyebrow">Your day, in one place</span><h2>Run the day<br /><em>from your phone.</em></h2><p>Orders, menu, tables, QR, payments and staff access—purpose-built for the pace of a real business.</p></div><ProductVisual /><div className="product-links"><a href="/features"><Smartphone />Explore the product <ArrowRight size={15} /></a><a href="/cafes"><Store />See the café experience <ArrowRight size={15} /></a></div></section><section className="marketing-section menu-story"><div><span className="marketing-eyebrow">Menu management</span><h2>Your menu changes.<br /><em>Your QR doesn't.</em></h2><p>Update prices, availability and categories while the link on your table stays familiar to your guests.</p></div><div className="menu-window"><div className="menu-window-head"><span>Menu</span><b>+ Add item</b></div><div className="menu-line"><span className="menu-thumb warm" /><div><b>Masala omelette</b><small>Breakfast · ₹180</small></div><i>Available</i></div><div className="menu-line"><span className="menu-thumb green" /><div><b>Filter coffee</b><small>Drinks · ₹90</small></div><i>Available</i></div><div className="menu-line muted-line"><span className="menu-thumb pale" /><div><b>Seasonal tart</b><small>Desserts · ₹220</small></div><i>Hidden</i></div></div></section><section className="marketing-section pricing-section"><div className="section-heading"><span className="marketing-eyebrow">Simple to start</span><h2>Everything your<br /><em>QR should unlock.</em></h2></div><div className="pricing-layout"><div className="price-card"><div className="price-top"><span>PRIME</span><b>For growing local businesses</b></div><div className="price"><del>₹1,599</del><strong>₹599</strong><span>/ month</span></div><p>Launch pricing for restaurants, cafés and hotels.</p><ul>{["Permanent dynamic QR", "Customer page and digital menu", "Orders and tables", "Payment destination management", "Analytics and up to 5 staff", "Support when you need it"].map(x => <li key={x}><Check size={16} />{x}</li>)}</ul><a className="marketing-button light wide" href="/signup">Start with Prime <ArrowRight size={16} /></a></div><div className="custom-card"><span className="marketing-eyebrow">Something different?</span><h3>Let's build the right rollout.</h3><p>We're onboarding other business categories personally. Talk to the team about a custom requirement.</p><a className="marketing-text-link" href="/contact">Talk to sales <ArrowRight size={15} /></a></div></div></section><section className="marketing-section faq-section"><div className="section-heading"><span className="marketing-eyebrow">Good questions</span><h2>Clear before<br /><em>you begin.</em></h2></div><div className="faq-list">{faqs.map(([q, a], i) => <div className="faq-item" key={q}><button onClick={() => setFaq(faq === i ? null : i)} aria-expanded={faq === i}><span>{q}</span>{faq === i ? <X size={17} /> : <ChevronDown size={17} />}</button>{faq === i && <p>{a}</p>}</div>)}</div></section><section className="marketing-cta-section"><span className="marketing-eyebrow">Ready when you are</span><h2>One QR.<br /><em>Ready for the day.</em></h2><div className="hero-actions"><a className="marketing-button light" href="/signup">Start with Prime <ArrowRight size={16} /></a><a className="marketing-text-link" href="/contact">Talk to sales <ArrowRight size={15} /></a></div></section></main><MarketingFooter /></>;
 }
 
-function MarketingFooter() { return <footer className="marketing-footer"><div><a className="marketing-brand" href="/"><Mark /><span>1QR <b>Prime</b></span></a><p>One QR for the way local business works.</p></div><div className="footer-links"><div><b>Product</b><a href="/features">Features</a><a href="/pricing">Pricing</a><a href="/restaurants">Restaurants</a><a href="/cafes">Cafés</a></div><div><b>Resources</b><a href="/blog">Journal</a><a href="/contact">Contact</a><a href="/support">Support</a></div><div><b>Account</b><a href="/login">Sign in</a><a href="/signup">Create account</a><a href="/privacy">Privacy</a><a href="/terms">Terms</a></div></div><small>© {new Date().getFullYear()} 1QR Prime. Built for local business.</small></footer>; }
+function MarketingFooter() {
+  return <footer className="marketing-footer">
+    <div>
+      <a className="marketing-brand" href="/"><Mark /><span>1QR <b>Prime</b></span></a>
+      <p>One QR for the way local business works.</p>
+      <small className="brand-alias">1QR Prime · One QR Prime · 1QRPrime</small>
+    </div>
+    <div className="footer-links">
+      <div><b>Product</b><a href="/features">Features</a><a href="/pricing">Pricing</a><a href="/one-qr">One QR</a><a href="/qr-menu">QR menu</a><a href="/digital-menu">Digital menu</a><a href="/dynamic-qr-menu">Dynamic QR</a></div>
+      <div><b>Restaurant</b><a href="/restaurant-software">Restaurant software</a><a href="/restaurant-management-software">Management software</a><a href="/restaurant-ordering-system">Ordering system</a><a href="/table-ordering-system">Table ordering</a><a href="/restaurant-qr">Restaurant QR</a></div>
+      <div><b>Solutions</b><a href="/restaurants">Restaurants</a><a href="/cafe-software">Café software</a><a href="/cafes">Cafés</a><a href="/hotel-qr">Hotel QR</a><a href="/hotels">Hotels</a><a href="/upi-restaurant-ordering">UPI ordering</a></div>
+      <div><b>India</b><a href="/qr-menu-india">QR menu India</a><a href="/restaurant-software-bangalore">Restaurant software Bengaluru</a><a href="/qr-menu-bangalore">QR menu Bengaluru</a><a href="/blog/restaurant-software-india-buyers-guide">Software guide</a><a href="/blog/restaurant-qr-menu-india-guide">QR menu guide</a></div>
+      <div><b>Resources</b><a href="/blog">Journal</a><a href="/about">About</a><a href="/contact">Contact</a><a href="/support">Support</a><a href="/llms.txt">LLMs</a><a href="/privacy">Privacy</a><a href="/terms">Terms</a></div>
+    </div>
+    <small>© {new Date().getFullYear()} 1QR Prime. Built for local business.</small>
+  </footer>;
+}
 
 function ContentPage({ path }: { path: string }) {
   const config = pageMeta[path] || pageMeta["/features"];
@@ -226,24 +308,101 @@ function ContentPage({ path }: { path: string }) {
   return <><Meta path={path} /><MarketingHeader /><main className="marketing-subpage"><section className="subpage-hero"><span className="marketing-eyebrow">{h.kicker}</span><h1>{h.title}</h1><p>{h.intro}</p><a className="marketing-button light" href="/signup">Start with Prime <ArrowRight size={16} /></a></section><section className="subpage-grid">{[{icon: QrCode, title: "A permanent public identity", text: "Print one QR and keep improving the page behind it."}, {icon: ShoppingBag, title: "A focused operating view", text: "Orders, menu, tables and customer actions in one workspace."}, {icon: Wallet, title: "Trustworthy payment handoff", text: "Show context clearly and keep confirmation language honest."}, {icon: Users, title: "A team that has boundaries", text: "Invite up to five staff with permissions that match the work."}, {icon: BarChart3, title: "Useful signals", text: "See the activity your product actually records—without invented metrics."}, {icon: Smartphone, title: "Made for a phone", text: "A merchant experience that works when the day is moving."}].map(({icon: Icon, title, text}) => <article key={title}><Icon /><h3>{title}</h3><p>{text}</p></article>)}</section><section className="subpage-callout"><div><span className="marketing-eyebrow">Built to stay simple</span><h2>{path === "/hotels" ? "Start with the guest moments you can improve today." : "The details are the product."}</h2><p>Fast pages, clear states and a QR that does not need reprinting when your business evolves.</p></div><ProductVisual /></section></main><MarketingFooter /></>;
 }
 
+function SeoLandingPage({ path }: { path: string }) {
+  const page = seoLandings[path];
+  if (!page) return <NotFound />;
+  const related = articles
+    .filter((article) => article.keywords?.some((keyword) => page.keywords.some((target) => keyword.toLowerCase().includes(target.toLowerCase().split(" ")[0]))))
+    .slice(0, 4);
+  return <><Meta path={path} /><MarketingHeader /><main className="marketing-subpage seo-landing-page">
+    <section className="subpage-hero">
+      <span className="marketing-eyebrow">{page.kicker}</span>
+      <h1>{page.h1}</h1>
+      <p>{page.intro}</p>
+      <div className="hero-actions"><a className="marketing-button light" href="/signup">Start with Prime <ArrowRight size={16} /></a><a className="marketing-text-link" href="/pricing">See pricing <ArrowRight size={15} /></a></div>
+    </section>
+    <section className="seo-copy-grid">
+      {page.sections.map((section) => <article key={section.title}><h2>{section.title}</h2><p>{section.body}</p></article>)}
+    </section>
+    <section className="seo-feature-section">
+      <span className="marketing-eyebrow">What 1QR Prime supports</span>
+      <h2>Built around the QR-led customer journey.</h2>
+      <div className="seo-feature-list">{page.features.map((feature) => <span key={feature}><Check size={15} />{feature}</span>)}</div>
+    </section>
+    <section className="faq-section seo-faq">
+      <div className="section-heading"><span className="marketing-eyebrow">Questions</span><h2>What businesses ask before they start.</h2></div>
+      <div className="faq-list">{page.faq.map((item) => <div className="faq-item" key={item.q}><h3>{item.q}</h3><p>{item.a}</p></div>)}</div>
+    </section>
+    {related.length > 0 && <section className="seo-related"><span className="marketing-eyebrow">Related guides</span><div>{related.map((article) => <a key={article.slug} href={`/blog/${article.slug}`}><strong>{article.title}</strong><span>{article.description}</span></a>)}</div></section>}
+  </main><MarketingFooter /></>;
+}
+
 function PricingPage() { return <><Meta path="/pricing" /><MarketingHeader /><main className="marketing-subpage"><section className="subpage-hero compact"><span className="marketing-eyebrow">Pricing</span><h1>One clear plan<br /><em>to start well.</em></h1><p>Prime includes the essential QR, customer and operating tools for restaurants, cafés and hotels.</p></section><section className="pricing-layout pricing-page-layout"><div className="price-card"><div className="price-top"><span>PRIME</span><b>Launch price</b></div><div className="price"><del>₹1,599</del><strong>₹599</strong><span>/ month</span></div><ul>{["Permanent dynamic QR", "Business page and menu", "Orders and table QR codes", "UPI destination management", "Analytics", "Up to 5 non-owner staff", "Support"].map(x => <li key={x}><Check size={16} />{x}</li>)}</ul><a className="marketing-button light wide" href="/signup">Continue with Prime <ArrowRight size={16} /></a><small className="price-note">Billing is handled securely through Razorpay. No payment is implied until checkout is completed.</small></div><div className="custom-card"><span className="marketing-eyebrow">Custom</span><h3>Need a different setup?</h3><p>We're onboarding other categories personally. Tell us what you are building.</p><a className="marketing-text-link" href="/contact">Talk to sales <ArrowRight size={15} /></a></div></section></main><MarketingFooter /></>; }
 
-function Blog() { return <><Meta path="/blog" /><MarketingHeader /><main className="marketing-subpage blog-page"><section className="subpage-hero compact"><span className="marketing-eyebrow">The 1QR Prime journal</span><h1>Useful ideas for<br /><em>the real day.</em></h1><p>Guides to QR menus, ordering, UPI and building a customer experience people enjoy using.</p></section><section className="article-grid">{articles.map((a, i) => <article className={i === 0 ? "featured-article" : ""} key={a.slug}><span className="marketing-eyebrow">{a.category} · {a.read}</span><h2><a href={`/blog/${a.slug}`}>{a.title}</a></h2><p>{a.description}</p><a className="marketing-text-link" href={`/blog/${a.slug}`}>Read article <ArrowRight size={15} /></a></article>)}</section></main><MarketingFooter /></>; }
-function ArticlePage({ article }: { article: Article }) { return <><Meta path={`/blog/${article.slug}`} article={article} /><MarketingHeader /><main className="article-page"><header><span className="marketing-eyebrow">{article.category} · {article.read}</span><h1>{article.title}</h1><p>{article.description}</p></header><article className="article-body">{article.body}</article><div className="article-next"><a href="/blog">← Back to the journal</a><a className="marketing-button light" href="/signup">Start with Prime <ArrowRight size={16} /></a></div></main><MarketingFooter /></>; }
+function Blog() {
+  const [extraArticles, setExtraArticles] = useState<Article[]>([]);
+  useEffect(() => {
+    let active = true;
+    import("./seo-articles").then((module) => { if (active) setExtraArticles(module.seoArticles); });
+    return () => { active = false; };
+  }, []);
+  const allArticles = [...articles, ...extraArticles];
+  return <><Meta path="/blog" /><MarketingHeader /><main className="marketing-subpage blog-page">
+    <section className="subpage-hero compact"><span className="marketing-eyebrow">The 1QR Prime journal</span><h1>Restaurant QR,<br /><em>software and operations.</em></h1><p>52 practical guides covering QR menus, restaurant software, ordering, UPI, table workflows and customer experience.</p></section>
+    <section className="article-grid">{allArticles.map((a, i) => <article className={i === 0 ? "featured-article" : ""} key={a.slug}><span className="marketing-eyebrow">{a.category} · {a.read}</span><h2><a href={`/blog/${a.slug}`}>{a.title}</a></h2><p>{a.description}</p><a className="marketing-text-link" href={`/blog/${a.slug}`}>Read article <ArrowRight size={15} /></a></article>)}</section>
+  </main><MarketingFooter /></>;
+}
+function GeneratedArticleBody({ article }: { article: Article }) {
+  if (article.body) return <>{article.body}</>;
+  return <>
+    {article.intro && <p className="article-intro">{article.intro}</p>}
+    {article.sections?.map((section) => <section key={section.title}><h2>{section.title}</h2>{section.paragraphs.map((paragraph, index) => <p key={index}>{paragraph}</p>)}</section>)}
+    {article.takeaways?.length ? <section><h2>Key takeaways</h2><ul>{article.takeaways.map((item) => <li key={item}>{item}</li>)}</ul></section> : null}
+    {article.faq?.length ? <section><h2>Frequently asked questions</h2>{article.faq.map((item) => <div className="article-faq" key={item.q}><h3>{item.q}</h3><p>{item.a}</p></div>)}</section> : null}
+    <p>Explore <a href="/restaurant-software">restaurant software</a>, <a href="/qr-menu">QR menus</a>, or learn how <a href="/one-qr">one permanent QR</a> can connect the customer journey.</p>
+  </>;
+}
+function ArticlePage({ article }: { article: Article }) {
+  const related = articles.filter((candidate) => candidate.slug !== article.slug && candidate.category === article.category).slice(0, 3);
+  return <><Meta path={`/blog/${article.slug}`} article={article} /><MarketingHeader /><main className="article-page">
+    <header>
+      <span className="marketing-eyebrow">{article.category} · {article.read}</span>
+      <h1>{article.title}</h1>
+      <p>{article.description}</p>
+      <div className="article-byline"><span>By <a href="/about">1QR Prime Editorial Team</a></span><span>Published {new Date((article.published || "2026-10-23") + "T00:00:00").toLocaleDateString("en-IN", { day: "numeric", month: "long", year: "numeric" })}</span>{article.updated && article.updated !== (article.published || "2026-10-23") && <span>Updated {new Date(article.updated + "T00:00:00").toLocaleDateString("en-IN", { day: "numeric", month: "long", year: "numeric" })}</span>}</div>
+    </header>
+    <article className="article-body"><GeneratedArticleBody article={article} /></article>
+    {related.length > 0 && <section className="article-related"><span className="marketing-eyebrow">Related reading</span>{related.map((item) => <a key={item.slug} href={`/blog/${item.slug}`}><strong>{item.title}</strong><ArrowRight size={15} /></a>)}</section>}
+    <div className="article-next"><a href="/blog">← Back to the journal</a><a className="marketing-button light" href="/signup">Start with Prime <ArrowRight size={16} /></a></div>
+  </main><MarketingFooter /></>;
+}
+function AsyncSeoArticlePage({ slug }: { slug: string }) {
+  const [article, setArticle] = useState<Article | null | undefined>(undefined);
+  useEffect(() => {
+    let active = true;
+    import("./seo-articles")
+      .then((module) => { if (active) setArticle(module.seoArticles.find((item) => item.slug === slug) || null); })
+      .catch(() => { if (active) setArticle(null); });
+    return () => { active = false; };
+  }, [slug]);
+  if (article === undefined) return <><MarketingHeader /><main className="article-page"><header><span className="marketing-eyebrow">1QR Prime Journal</span><h1>Loading guide…</h1></header></main></>;
+  return article ? <ArticlePage article={article} /> : <NotFound />;
+}
 function Contact({ support = false }: { support?: boolean }) { return <><Meta path={support ? "/support" : "/contact"} /><MarketingHeader /><main className="marketing-subpage contact-page"><section className="subpage-hero compact"><span className="marketing-eyebrow">{support ? "Support" : "Contact"}</span><h1>{support ? <>Help for the<br /><em>working day.</em></> : <>Let's make the<br /><em>next step clear.</em></>}</h1><p>{support ? "For an order, booking or payment issue, contact the business shown on its customer page. For workspace help, tell us what you are trying to do." : "Product support, a custom rollout, or a question about Prime—we'll point you in the right direction."}</p></section><section className="contact-grid"><a href="mailto:support@1qrprime.com"><span>Product support</span><b>{support ? "Get help with your workspace" : "Help with an existing workspace"} <ArrowUpRight size={16} /></b></a><a href="mailto:sales@1qrprime.com"><span>Sales</span><b>Talk about a custom business <ArrowUpRight size={16} /></b></a><a href="mailto:hello@1qrprime.com"><span>General</span><b>Say hello to the team <ArrowUpRight size={16} /></b></a></section></main><MarketingFooter /></>; }
 function Legal({ terms = false }: { terms?: boolean }) { return <><Meta path={terms ? "/terms" : "/privacy"} /><MarketingHeader /><main className="legal-page"><span className="marketing-eyebrow">1QR Prime</span><h1>{terms ? "Terms of service" : "Privacy, plainly."}</h1><p className="legal-lede">{terms ? "The rules for using 1QR Prime merchant and public business services." : "A practical summary of how account, business and operational data is handled."}</p><article>{terms ? <><h2>Using the service</h2><p>1QR Prime provides merchant workspaces, public business pages, menus, orders, QR destinations and related tools. You are responsible for information you publish and for keeping account access secure.</p><h2>Billing and third parties</h2><p>Prime billing is handled through the configured payment provider. Payment apps and other external services have their own terms. Do not use 1QR Prime to request customer PINs, passwords or sensitive credentials.</p><h2>Public pages and acceptable use</h2><p>Only publish information you have the right to share. Do not use public pages for unlawful, misleading, abusive or harmful activity. We may restrict access when necessary to protect the service or other users.</p><h2>Legal review</h2><p>This product draft requires final review for the operating entity, governing law, billing terms and support contacts before public launch.</p></> : <><h2>Information we handle</h2><p>We may handle account details, business profiles, menus, orders, enquiries, payment-route references and operational audit records needed to provide the service. Customers can use public pages without merchant accounts.</p><h2>Payments and storage</h2><p>1QR Prime does not request UPI PINs or bank passwords. Payment providers and external links process their own data. Merchant sessions use protected cookies or secure native storage. Customer carts and recovery references may remain in the local browser.</p><h2>Security and retention</h2><p>Access controls, tenant boundaries, session revocation and audit records are used to protect the service. Data retention depends on the data type and operational need; owners can request export or deletion through the workspace.</p><h2>Legal review</h2><p>This is a product policy draft. Before public launch, publish the operating entity, contact, processors, hosting region and rights process.</p></>}</article></main><MarketingFooter /></>; }
 function NotFound() { return <><Meta path="/" /><MarketingHeader /><main className="not-found"><span className="marketing-eyebrow">404</span><h1>This page<br /><em>isn't here.</em></h1><p>Try the product overview or explore the journal.</p><div className="hero-actions"><a className="marketing-button light" href="/">Go home <ArrowRight size={16} /></a><a className="marketing-text-link" href="/blog">Explore the journal <ArrowRight size={15} /></a></div></main><MarketingFooter /></>; }
 
-export function isMarketingPath(path: string) { return marketingPages.has(path) || path.startsWith("/blog/"); }
+export function isMarketingPath(path: string) { return isPublicMarketingPath(path); }
 export function MarketingRouter({ path }: { path: string }) {
   if (path === "/") return <Landing />;
   if (path === "/pricing") return <PricingPage />;
   if (path === "/blog") return <Blog />;
-  if (path.startsWith("/blog/")) { const article = articles.find(a => a.slug === path.slice("/blog/".length)); return article ? <ArticlePage article={article} /> : <NotFound />; }
+  if (path.startsWith("/blog/")) { const slug = path.slice("/blog/".length); const article = articles.find(a => a.slug === slug); return article ? <ArticlePage article={article} /> : <AsyncSeoArticlePage slug={slug} />; }
   if (path === "/contact") return <Contact />;
   if (path === "/support") return <Contact support />;
   if (path === "/privacy") return <Legal />;
   if (path === "/terms") return <Legal terms />;
+  if (seoLandings[path]) return <SeoLandingPage path={path} />;
   if (marketingPages.has(path)) return <ContentPage path={path} />;
   return <NotFound />;
 }
