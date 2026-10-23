@@ -1,5 +1,6 @@
 import Fastify from "fastify";
 import { existsSync, readFileSync } from "node:fs";
+import { setTimeout as sleep } from "node:timers/promises";
 import { config } from "./config.js";
 import type { Db } from "./db.js";
 
@@ -27,6 +28,16 @@ const app = Fastify({
 
 let bootstrapStage = "database";
 
+const positiveInt = (value: string | undefined, fallback: number) => {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed > 0 ? Math.floor(parsed) : fallback;
+};
+
+const errorCode = (error: unknown) =>
+  error && typeof error === "object" && "code" in error
+    ? String((error as { code?: unknown }).code)
+    : "UNKNOWN";
+
 async function start() {
   let postgres: Awaited<ReturnType<typeof import("./async-db.js")["createPostgresDatabase"]>> | undefined;
   let db: Db | undefined;
@@ -41,6 +52,35 @@ async function start() {
     if (!postgres) {
       const { openDb } = await import("./db.js");
       db = openDb(c.DATABASE_PATH);
+    } else {
+      // The migration process may succeed just before PostgreSQL is restarted
+      // by the platform. Verify connectivity again before registering routes so
+      // a transient network/database restart does not turn into a crash loop.
+      bootstrapStage = "database-readiness";
+      const maxWaitMs = positiveInt(process.env.PG_BOOTSTRAP_MAX_WAIT_MS, 60_000);
+      const startedAt = Date.now();
+      let attempt = 0;
+
+      while (true) {
+        attempt += 1;
+        try {
+          const row = await postgres.get<{ ok: number }>("SELECT 1 AS ok");
+          if (Number(row?.ok) === 1) break;
+          throw new Error("PostgreSQL readiness query returned an unexpected result");
+        } catch (error) {
+          const elapsedMs = Date.now() - startedAt;
+          if (elapsedMs >= maxWaitMs) throw error;
+
+          const waitMs = Math.max(
+            100,
+            Math.min(5_000, 500 * 2 ** Math.min(attempt - 1, 4), maxWaitMs - elapsedMs),
+          );
+          console.warn(
+            `PostgreSQL not ready during API bootstrap (attempt ${attempt}, code ${errorCode(error)}); retrying in ${waitMs}ms`,
+          );
+          await sleep(waitMs);
+        }
+      }
     }
 
     bootstrapStage = "application";
