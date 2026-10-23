@@ -10,11 +10,7 @@ const positiveInt = (value: string | undefined, fallback: number) => {
 export async function sendMail(to: string, subject: string, text: string) {
   const fromEmail = process.env.SMTP_FROM_EMAIL || process.env.MAIL_FROM;
   const transport = process.env.SMTP_URL
-    ? nodemailer.createTransport(process.env.SMTP_URL, {
-        connectionTimeout: positiveInt(process.env.SMTP_CONNECTION_TIMEOUT_MS, 10_000),
-        greetingTimeout: positiveInt(process.env.SMTP_GREETING_TIMEOUT_MS, 10_000),
-        socketTimeout: positiveInt(process.env.SMTP_SOCKET_TIMEOUT_MS, 20_000),
-      })
+    ? nodemailer.createTransport(process.env.SMTP_URL)
     : process.env.SMTP_HOST
       ? nodemailer.createTransport({
           host: process.env.SMTP_HOST,
