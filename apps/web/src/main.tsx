@@ -444,6 +444,15 @@ function App() {
   const needsOnboarding = productState === "AUTHENTICATED_ACCOUNT_SETUP";
   const paymentRequired = productState === "PRIME_PAYMENT_REQUIRED";
   const salesPending = productState === "SALES_CONTACT_PENDING";
+  const visibleNav = nav.filter(
+    ([key]) =>
+      !(
+        l?.role === "staff" &&
+        ["payments", "staff", "analytics"].includes(key)
+      ) &&
+      !(key === "service" && l?.role === "staff" && l?.operational_role !== "service") &&
+      !(l?.role === "staff" && key === "marketing"),
+  );
   if (!canRenderMerchantNavigation(productState) && !me.adminRole)
     return (
       <div className="auth auth-v2">
@@ -473,17 +482,9 @@ function App() {
         </select>
         <nav aria-label="Business navigation">
           {me.locations.length > 1 && <button className={section === "portfolio" ? "active" : ""} onClick={() => setSection("portfolio")}><LayoutDashboard size={19} />Portfolio</button>}
-          {nav
-            .filter(
-              ([key]) =>
-                !(
-                  l?.role === "staff" &&
-                  ["payments", "staff", "analytics"].includes(key)
-                ) && !(key === "service" && l?.role === "staff" && l?.operational_role !== "service") && !(l?.role === "staff" && key === "marketing"),
-            )
-            .map(([key, title, Icon]) => (
+          {visibleNav.map(([key, title, Icon]) => (
               <button
-                className={section === key ? "active" : ""}
+                className={`${section === key ? "active" : ""} ${["overview", "orders", "service", "menu", "payments"].includes(key) ? "mobile-dock-primary" : "mobile-dock-secondary"}`.trim()}
                 key={key}
                 onClick={() => {
                   setSection(key);
@@ -544,6 +545,20 @@ function App() {
             >
               {me.locations.length > 1 && <option value="all">All businesses</option>}
               {me.locations.map((x: Any) => <option key={x.id} value={x.id}>{x.name}</option>)}
+            </select>
+            <select
+              className="mobile-section-select"
+              aria-label="Active section"
+              value={section}
+              onChange={(e) => {
+                setSection(e.target.value);
+                setError("");
+              }}
+            >
+              {me.locations.length > 1 && <option value="portfolio">Portfolio</option>}
+              {visibleNav.map(([key, title]) => <option key={key} value={key}>{title}</option>)}
+              {l?.role === "owner" && <option value="new">Add business</option>}
+              {me.adminRole && <option value="admin">Support console</option>}
             </select>
             <span className="topbar-business-status">{tenant?.name || "Business"}</span>
             {l?.published && <Badge tone="green">Live</Badge>}
@@ -2121,7 +2136,7 @@ function ServiceRequests({ l }: any) {
   const [failure, setFailure] = useState("");
   async function update(id: string, action: "acknowledge" | "complete") { try { await api(`/locations/${l.id}/service-requests/${id}/${action}`, "POST"); load(); } catch (e) { setFailure((e as Error).message); } }
   const requests = data?.requests || [];
-  return <section className="service-requests-panel"><div className="toolbar"><div><Badge tone="green">SERVICE DESK</Badge><h2>Service requests</h2><p className="muted">Waiter, water, cutlery and bill requests for this location.</p></div><button className="secondary" onClick={load}><RefreshCw size={16} /> Refresh</button></div><ErrorBox error={failure || error} /><div className="service-request-columns">{([["NEW", "Needs attention"], ["ACKNOWLEDGED", "In progress"], ["COMPLETED", "Completed"]] as const).map(([status, title]) => <section className="card" key={status}><div className="card-heading"><h3>{title}</h3><Badge>{requests.filter((x: Any) => x.status === status).length}</Badge></div>{requests.filter((x: Any) => x.status === status).map((item: Any) => <article className="service-staff-card" key={item.id}><strong>{item.table_name}</strong><span>{label(item.type)}{item.quantity > 1 ? ` · ${item.quantity}` : ""}</span><small>{new Date(item.created_at).toLocaleTimeString("en-IN")}{item.assigned_staff_email ? ` · ${item.assigned_staff_email}` : ""}</small>{status === "NEW" && <button className="primary" onClick={() => void update(item.id, "acknowledge")}>Accept</button>}{status === "ACKNOWLEDGED" && <button className="secondary" onClick={() => void update(item.id, "complete")}>Complete</button>}</article>)}{!requests.some((x: Any) => x.status === status) && <p className="muted">Nothing here.</p>}</section>)}</div></section>;
+  return <section className="service-requests-panel"><div className="toolbar service-toolbar"><div><Badge tone="green">SERVICE DESK</Badge><p className="muted">Waiter, water, cutlery and bill requests for this location.</p></div><button className="secondary" onClick={load}><RefreshCw size={16} /> Refresh</button></div><ErrorBox error={failure || error} /><div className="service-request-columns">{([["NEW", "Needs attention"], ["ACKNOWLEDGED", "In progress"], ["COMPLETED", "Completed"]] as const).map(([status, title]) => <section className="card" key={status}><div className="card-heading"><h3>{title}</h3><Badge>{requests.filter((x: Any) => x.status === status).length}</Badge></div>{requests.filter((x: Any) => x.status === status).map((item: Any) => <article className="service-staff-card" key={item.id}><strong>{item.table_name}</strong><span>{label(item.type)}{item.quantity > 1 ? ` · ${item.quantity}` : ""}</span><small>{new Date(item.created_at).toLocaleTimeString("en-IN")}{item.assigned_staff_email ? ` · ${item.assigned_staff_email}` : ""}</small>{status === "NEW" && <button className="primary" onClick={() => void update(item.id, "acknowledge")}>Accept</button>}{status === "ACKNOWLEDGED" && <button className="secondary" onClick={() => void update(item.id, "complete")}>Complete</button>}</article>)}{!requests.some((x: Any) => x.status === status) && <p className="muted">Nothing here.</p>}</section>)}</div></section>;
 }
 function Staff({ l }: any) {
   const { data, error, load } = usePoll(`/tenants/${l.tenant_id}/staff`, 30000),
@@ -2917,7 +2932,7 @@ function Customer({ slug, initialView = "hub" }: { slug: string; initialView?: "
         <div className="customer-brand-link" aria-label={`Back to ${b.name}`}><Brand /></div>
         <div className="customer-top-actions">
           {view === "menu" && <button className="customer-top-button" aria-label="Search menu" onClick={() => document.querySelector<HTMLInputElement>(".customer-menu-search")?.focus()}><Search size={18} /></button>}
-          {lines.length > 0 && <button className="customer-top-button customer-top-cart" aria-label={`${lines.length} items in cart`} onClick={() => document.querySelector<HTMLElement>(".customer-cart-panel")?.scrollIntoView({ behavior: "smooth", block: "center" })}><ShoppingBag size={18} /><span>{lines.reduce((sum: number, i: Any) => sum + cart[i.id], 0)}</span></button>}
+          {lines.length > 0 && <button className="customer-top-button customer-top-cart" aria-label={`${lines.length} items in cart`} onClick={() => document.querySelector<HTMLElement>(".customer-cart-panel")?.scrollIntoView({ behavior: "smooth", block: "start" })}><ShoppingBag size={18} /><span>{lines.reduce((sum: number, i: Any) => sum + cart[i.id], 0)}</span></button>}
         </div>
       </header>
       <div className="customer-hero">
@@ -3024,7 +3039,7 @@ function Customer({ slug, initialView = "hub" }: { slug: string; initialView?: "
         </div>
       )}
       {order ? (
-        <section className="card spaced">
+        <section className="card spaced customer-order-status-card">
           <div className="card-heading">
             <div>
               <Badge>YOUR ORDER</Badge>
@@ -3139,7 +3154,7 @@ function Customer({ slug, initialView = "hub" }: { slug: string; initialView?: "
               )}
             </section>
           )}
-      {view === "menu" && lines.length > 0 && !pending && <button className="customer-cart-bar" onClick={() => document.querySelector<HTMLElement>(".customer-cart-panel")?.scrollIntoView({ behavior: "smooth", block: "center" })}><span className="cart-count">{lines.reduce((sum: number, i: Any) => sum + cart[i.id], 0)}</span><span><strong>{lines.length === 1 ? "1 item" : `${lines.length} items`}</strong><small>Ready to review</small></span><b>{money(total)}</b><ArrowUpRight size={18} /></button>}
+      {view === "menu" && lines.length > 0 && !pending && <button className="customer-cart-bar" onClick={() => document.querySelector<HTMLElement>(".customer-cart-panel")?.scrollIntoView({ behavior: "smooth", block: "start" })}><span className="cart-count">{lines.reduce((sum: number, i: Any) => sum + cart[i.id], 0)}</span><span><strong>{lines.length === 1 ? "1 item" : `${lines.length} items`}</strong><small>Ready to review</small></span><b>{money(total)}</b><ArrowUpRight size={18} /></button>}
       {view === "menu" && (lines.length > 0 || pending) && (
             <section className="card cart customer-cart-panel">
               <h2>Your order</h2>
