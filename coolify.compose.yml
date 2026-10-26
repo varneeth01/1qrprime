@@ -82,8 +82,12 @@ services:
     # Cloudflare 504.
     expose:
       - "80"
+    # Coolify's Traefik proxy reaches application services over the shared
+    # destination network. Keep the project-private network as well so nginx
+    # can resolve the API by service name.
     networks:
       - default
+      - coolify-shared
     restart: unless-stopped
     stop_grace_period: 15s
     healthcheck:
