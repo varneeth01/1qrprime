@@ -86,7 +86,7 @@ export class OrderRepository {
     for (const line of input.lines) {
       const item = await this.db.get<any>("SELECT price_paise,discounted_price_paise,available,stock_status FROM items WHERE id=? AND location_id=? AND archived=FALSE", [line.itemId, input.location.id]);
       if (!item || !item.available || item.stock_status !== "AVAILABLE") throw Object.assign(new Error("An item is unavailable. Refresh the menu."), { statusCode: 409 });
-      const price = item.discounted_price_paise != null && Number(item.discounted_price_paise) < Number(item.price_paise) ? Number(item.discounted_price_paise) : Number(item.price_paise);
+      const price = item.discounted_price_paise != null && Number(item.discounted_price_paise) > 0 && Number(item.discounted_price_paise) < Number(item.price_paise) ? Number(item.discounted_price_paise) : Number(item.price_paise);
       lines.push({ quantity: line.quantity, pricePaise: price });
     }
     const subtotalPaise = lines.reduce((sum, line) => sum + line.quantity * line.pricePaise, 0);
@@ -190,7 +190,7 @@ export class OrderRepository {
           }
           const originalBasePrice = variant
             ? Number(variant.price_paise)
-            : item.discounted_price_paise != null && Number(item.discounted_price_paise) < Number(item.price_paise)
+            : item.discounted_price_paise != null && Number(item.discounted_price_paise) > 0 && Number(item.discounted_price_paise) < Number(item.price_paise)
               ? Number(item.discounted_price_paise)
               : Number(item.price_paise);
           const promotions = await tx.all<any>("SELECT id,name,customer_title,promotion_type,value_paise,target_json FROM promotions WHERE location_id=? AND status IN ('scheduled','active') AND start_at<=? AND end_at>? ORDER BY priority DESC,start_at ASC", [location.id, new Date().toISOString(), new Date().toISOString()]);
