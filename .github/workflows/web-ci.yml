@@ -1,12 +1,13 @@
-name: Web SEO CI
+name: Release CI
 
 on:
   pull_request:
     paths:
+      - "apps/api/**"
       - "apps/web/**"
       - "shared/**"
-      - "deploy/nginx.conf"
-      - "deploy/Dockerfile"
+      - "scripts/**"
+      - "deploy/**"
       - "coolify.compose.yml"
       - "package.json"
       - "package-lock.json"
@@ -15,10 +16,11 @@ on:
     branches:
       - coolify-production
     paths:
+      - "apps/api/**"
       - "apps/web/**"
       - "shared/**"
-      - "deploy/nginx.conf"
-      - "deploy/Dockerfile"
+      - "scripts/**"
+      - "deploy/**"
       - "coolify.compose.yml"
       - "package.json"
       - "package-lock.json"
@@ -28,9 +30,9 @@ permissions:
   contents: read
 
 jobs:
-  web:
+  release:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -44,8 +46,20 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Build web and generate static SEO routes
-        run: npm run build -w apps/web
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: API and SQLite tests
+        run: npm test
+
+      - name: Database inventory
+        run: npm run db:inventory
+
+      - name: Build API and web
+        run: npm run build
 
       - name: Run web validation tests
         run: npm run test:validation -w apps/web
+
+      - name: Git diff check
+        run: git diff --check
