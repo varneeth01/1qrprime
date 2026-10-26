@@ -2821,3 +2821,71 @@ html.choice-picker-open body {
     grid-template-columns: 1fr 1fr;
   }
 }
+
+
+/* Menu category manager */
+.platform-shell .menu-category-section {
+  padding-top: 18px;
+  margin-top: 18px;
+  border-top: 1px solid var(--app-line-soft);
+}
+
+.platform-shell .menu-category-section .card-heading {
+  margin-bottom: 10px;
+}
+
+.platform-shell .category-list {
+  display: grid;
+  gap: 7px;
+}
+
+.platform-shell .category-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 11px 12px;
+  background: var(--app-inset);
+  border: 1px solid var(--app-line-soft);
+  border-radius: 13px;
+}
+
+.platform-shell .category-row strong {
+  display: block;
+  color: var(--app-text);
+  font-size: 13px;
+}
+
+.platform-shell .category-row small {
+  color: var(--app-faint);
+}
+
+.platform-shell .category-composer {
+  display: grid;
+  grid-template-columns: minmax(0,1fr) auto auto;
+  gap: 8px;
+  align-items: center;
+  margin-top: 9px;
+}
+
+.platform-shell .category-composer input {
+  min-height: 44px;
+}
+
+@media (max-width: 700px) {
+  .platform-shell .category-row {
+    align-items: flex-start;
+    flex-wrap: wrap;
+  }
+
+  .platform-shell .category-row .grow {
+    flex-basis: calc(100% - 8px);
+  }
+
+  .platform-shell .category-composer {
+    grid-template-columns: 1fr auto;
+  }
+
+  .platform-shell .category-composer .text-button {
+    grid-column: 1 / -1;
+  }
+}
