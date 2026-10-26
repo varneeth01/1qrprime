@@ -81,6 +81,13 @@ export class PaymentRepository {
     return this.db.get<any>("SELECT * FROM payment_route_approvals WHERE route_id=? ORDER BY created_at DESC LIMIT 1", [routeId]);
   }
 
+  rotateOwnerApproval(tx: DbTransaction, routeId: string, tokenHash: string, expiresAt: string) {
+    return tx.run(
+      "UPDATE payment_route_approvals SET token_hash=?,status='pending_owner_approval',expires_at=?,approved_at=NULL,approved_by=NULL WHERE id=(SELECT id FROM payment_route_approvals WHERE route_id=? ORDER BY created_at DESC LIMIT 1)",
+      [tokenHash, expiresAt, routeId],
+    );
+  }
+
   approveOwner(tx: DbTransaction, id: string, ownerId: string) {
     return tx.run("UPDATE payment_route_approvals SET status='owner_approved',approved_at=?,approved_by=? WHERE id=? AND owner_user_id=? AND status='pending_owner_approval' AND expires_at>?", [new Date().toISOString(), ownerId, id, ownerId, new Date().toISOString()]);
   }

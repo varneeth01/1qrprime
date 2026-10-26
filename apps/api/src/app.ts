@@ -1088,8 +1088,39 @@ export async function createApp(
       await paymentRepository.createOwnerApproval(tx, { id: id(), routeId: rid, tenantId: l.tenant_id, requestedBy: u.id, ownerUserId: owner.id, tokenHash: hash(approvalToken), expiresAt: approvalExpires });
       await auditAsync(u.id, l.tenant_id, "route.created", rid, b, tx);
     });
-    await sendMail(owner.email, "Confirm your 1QR Prime payment destination", `${u.email} requested a payment destination change for ${l.name}.\n\nBusiness: ${l.name}\nPayment destination: ${b.vpa.replace(/^(.{2}).*(@.*)$/, "$1••••$2")}\nPayee: ${b.payee}\n\nConfirm payment destination: ${c.PUBLIC_ORIGIN}/payment-routes/confirm/${approvalToken}\n\nIf you did not request this change, do not approve it.`);
-    return { id: rid };
+    let confirmationDelivery: "sent" | "failed" = "sent";
+    try {
+      await sendMail(owner.email, "Confirm your 1QR Prime payment destination", `${u.email} requested a payment destination change for ${l.name}.\n\nBusiness: ${l.name}\nPayment destination: ${b.vpa.replace(/^(.{2}).*(@.*)$/, "$1••••$2")}\nPayee: ${b.payee}\n\nConfirm payment destination: ${c.PUBLIC_ORIGIN}/payment-routes/confirm/${approvalToken}\n\nIf you did not request this change, do not approve it.`);
+    } catch (error) {
+      confirmationDelivery = "failed";
+      app.log.error({ err: error, routeId: rid }, "payment destination confirmation email failed");
+    }
+    return { id: rid, confirmationDelivery };
+  });
+  app.post("/api/locations/:lid/routes/:rid/resend-confirmation", async (r) => {
+    const { l, u } = await loc(r, ["owner"]);
+    const rid = String((r.params as any).rid);
+    const route = await paymentRepository.getRoute(rid);
+    if (!route || route.location_id !== l.id || route.state !== "draft")
+      fail(404, "Payment destination is not available for confirmation");
+    const owner = await asyncDb.get<any>(
+      "SELECT u.id,u.email FROM users u JOIN memberships m ON m.user_id=u.id WHERE m.tenant_id=? AND m.role='owner' ORDER BY u.id LIMIT 1",
+      [l.tenant_id],
+    );
+    if (!owner) fail(409, "Business owner unavailable");
+    const approvalToken = secret();
+    const approvalExpires = new Date(Date.now() + 24 * 3600000).toISOString();
+    await asyncDb.transaction(async (tx) => {
+      const rotated = await paymentRepository.rotateOwnerApproval(tx, rid, hash(approvalToken), approvalExpires);
+      if (!rotated.rowCount) fail(409, "Confirmation request is unavailable");
+      await auditAsync(u.id, l.tenant_id, "route.owner_confirmation_resent", rid, {}, tx);
+    });
+    await sendMail(
+      owner.email,
+      "Confirm your 1QR Prime payment destination",
+      `${u.email} requested a new confirmation link for ${l.name}.\n\nBusiness: ${l.name}\nPayment destination: ${String(route.vpa).replace(/^(.{2}).*(@.*)$/, "$1••••$2")}\nPayee: ${route.payee}\n\nConfirm payment destination: ${c.PUBLIC_ORIGIN}/payment-routes/confirm/${approvalToken}\n\nIf you did not request this change, do not approve it.`,
+    );
+    return { ok: true, confirmationDelivery: "sent" };
   });
   app.post(
     "/api/locations/:lid/routes/:rid/request-verification",
