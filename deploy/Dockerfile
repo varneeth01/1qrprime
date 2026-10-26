@@ -28,9 +28,12 @@ COPY --from=api-build /app/scripts scripts
 RUN mkdir -p /data/media && chown -R node:node /data
 USER node
 EXPOSE 3000
-CMD ["sh","-c","node scripts/postgres-migrate.mjs && node apps/api/dist/server.js"]
+# Run migrations first, then replace the shell with Node so SIGTERM reaches
+# Fastify directly during Coolify deploys and shutdowns.
+CMD ["sh","-c","node scripts/postgres-migrate.mjs && exec node apps/api/dist/server.js"]
 
 FROM deps AS web-build
+ARG GOOGLE_SITE_VERIFICATION
 COPY apps/web apps/web
 # The web client shares validation, product-state, and error contracts with
 # the repository-level shared package. Keep that source in the container build

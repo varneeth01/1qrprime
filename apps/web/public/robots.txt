@@ -8,4 +8,9 @@ Disallow: /verify
 Disallow: /app
 Disallow: /admin
 Disallow: /api
+Disallow: /staff/
+Disallow: /payment-routes/
+
 Sitemap: https://1qrprime.com/sitemap.xml
+Sitemap: https://1qrprime.com/sitemap-pages.xml
+Sitemap: https://1qrprime.com/sitemap-blog.xml

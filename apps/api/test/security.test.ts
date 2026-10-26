@@ -97,7 +97,7 @@ test("durable migrations and records survive closing the database", () => {
     );
     assert.equal(
       (db.prepare("SELECT count(*) n FROM migrations").get() as any).n,
-      18,
+      19,
     );
     db.close();
   } finally {

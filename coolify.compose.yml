@@ -39,29 +39,57 @@ services:
       RAZORPAY_KEY_ID: ${RAZORPAY_KEY_ID:?Set Razorpay key ID}
       RAZORPAY_KEY_SECRET: ${RAZORPAY_KEY_SECRET:?Set Razorpay key secret}
       PG_POOL_MAX: ${PG_POOL_MAX:-10}
+      # Coolify can start the app while its separately managed PostgreSQL
+      # service is still joining the shared network or finishing a restart.
+      # Keep the API process alive and retry instead of crash-looping.
+      PG_MIGRATION_MAX_WAIT_MS: ${PG_MIGRATION_MAX_WAIT_MS:-120000}
+      PG_MIGRATION_CONNECT_TIMEOUT_MS: ${PG_MIGRATION_CONNECT_TIMEOUT_MS:-5000}
+      PG_MIGRATION_MAX_BACKOFF_MS: ${PG_MIGRATION_MAX_BACKOFF_MS:-5000}
+      PG_BOOTSTRAP_MAX_WAIT_MS: ${PG_BOOTSTRAP_MAX_WAIT_MS:-60000}
+      PG_CONNECT_TIMEOUT_MS: ${PG_CONNECT_TIMEOUT_MS:-10000}
     volumes:
       - prime-media:/data/media
     expose:
       - "3000"
+    # Keep API<->web traffic on the resource-private network, and attach only
+    # the API to Coolify's shared destination network so it can resolve/reach
+    # the standalone PostgreSQL resource by its internal container hostname.
+    networks:
+      - default
+      - coolify-shared
     restart: unless-stopped
+    stop_grace_period: 30s
     healthcheck:
-      test: ["CMD","node","-e","fetch('http://127.0.0.1:3000/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
-      interval: 30s
+      # Readiness (not just process liveness) is what the web service depends on.
+      test: ["CMD","node","-e","fetch('http://127.0.0.1:3000/api/ready').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 15s
       timeout: 5s
-      retries: 5
-      start_period: 20s
+      retries: 6
+      # Migration/network retries can legitimately keep Fastify from listening
+      # for up to two minutes during a cold database restart.
+      start_period: 150s
 
   web:
     build:
       context: .
       dockerfile: deploy/Dockerfile
       target: web-runtime
+      args:
+        GOOGLE_SITE_VERIFICATION: ${GOOGLE_SITE_VERIFICATION:-}
     depends_on:
       api:
         condition: service_healthy
     expose:
       - "80"
+    networks:
+      - default
     restart: unless-stopped
+    stop_grace_period: 15s
+
+networks:
+  coolify-shared:
+    external: true
+    name: ${COOLIFY_PREDEFINED_NETWORK:-coolify}
 
 volumes:
   prime-media:
