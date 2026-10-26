@@ -1082,3 +1082,439 @@ body { letter-spacing: -.005em; }
   .platform-shell .workspace main { padding-inline: 12px; }
   .mobile-business-select { width: min(74vw, 235px); }
 }
+
+
+/* Mobile UX production hotfix v7
+   Task-first merchant navigation, denser operational forms, and customer
+   checkout surfaces that do not fight the viewport on small screens. */
+.mobile-section-select { display: none; }
+
+.customer-order-status-card {
+  color: var(--customer-ink, #171717);
+  background: #fff;
+  border-color: rgba(23,23,23,.09);
+  box-shadow: 0 8px 24px rgba(23,23,23,.05);
+}
+.customer-order-status-card h1,
+.customer-order-status-card h2,
+.customer-order-status-card h3,
+.customer-order-status-card strong,
+.customer-order-status-card .list-row strong {
+  color: var(--customer-ink, #171717);
+}
+.customer-order-status-card p,
+.customer-order-status-card small,
+.customer-order-status-card .muted,
+.customer-order-status-card .list-row span {
+  color: var(--customer-muted, #70706b);
+}
+.customer-order-status-card .badge {
+  color: #36513c;
+  background: #eef5e9;
+  border-color: #dbe9d4;
+}
+.customer-order-status-card .list-row {
+  border-color: rgba(23,23,23,.09);
+}
+
+@media (max-width: 700px) {
+  .platform-shell {
+    padding-bottom: calc(74px + env(safe-area-inset-bottom));
+  }
+
+  .platform-shell .platform-sidebar {
+    height: calc(68px + env(safe-area-inset-bottom));
+    padding: 5px 6px calc(5px + env(safe-area-inset-bottom));
+    overflow: visible;
+  }
+
+  .platform-sidebar nav {
+    display: grid;
+    grid-template-columns: repeat(5, minmax(0,1fr));
+    gap: 2px;
+    overflow: visible;
+    padding: 0;
+  }
+
+  .platform-sidebar nav button:not(.mobile-dock-primary) {
+    display: none !important;
+  }
+
+  .platform-sidebar nav button.mobile-dock-primary {
+    min-width: 0;
+    width: 100%;
+    height: 56px;
+    min-height: 56px;
+    padding: 5px 2px 4px;
+    gap: 3px;
+    border-radius: 10px;
+    font-size: 9.5px !important;
+    line-height: 1.05;
+    white-space: normal;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .platform-sidebar nav button.mobile-dock-primary svg {
+    width: 19px;
+    height: 19px;
+  }
+
+  .platform-sidebar nav button.mobile-dock-primary.active {
+    color: #fff;
+    background: rgba(255,255,255,.075);
+    border-color: rgba(255,255,255,.08);
+    box-shadow: inset 0 2px 0 var(--accent);
+  }
+
+  .platform-sidebar nav .nav-dot {
+    top: 6px;
+    right: calc(50% - 18px);
+  }
+
+  .platform-topbar {
+    min-height: 60px;
+    padding: 7px 10px;
+  }
+
+  .topbar-context {
+    display: grid;
+    grid-template-columns: minmax(0,1fr) minmax(0,1fr) auto;
+    align-items: center;
+    gap: 6px;
+    width: 100%;
+  }
+
+  .mobile-business-select,
+  .mobile-section-select {
+    display: block;
+    min-width: 0;
+    width: 100%;
+    height: 42px;
+    min-height: 42px;
+    padding: 0 30px 0 10px;
+    color: var(--text);
+    background: #0c0c0e;
+    border: 1px solid var(--line-strong);
+    border-radius: 10px;
+    font-size: 13px;
+    font-weight: 600;
+  }
+
+  .topbar-context > .badge {
+    min-height: 22px;
+    padding-inline: 7px;
+    font-size: 9px;
+  }
+
+  .platform-shell .workspace main {
+    padding: 20px 13px 34px;
+  }
+
+  .platform-shell .page-title {
+    margin-bottom: 18px;
+  }
+
+  .platform-shell .page-title h1 {
+    margin-bottom: 7px;
+    font-size: clamp(26px, 7.5vw, 31px);
+    letter-spacing: -.045em;
+  }
+
+  .platform-shell .page-title p {
+    max-width: 42ch;
+    font-size: 13px;
+    line-height: 1.45;
+  }
+
+  .platform-shell .eyebrow {
+    font-size: 9.5px;
+    letter-spacing: .11em;
+  }
+
+  .platform-shell .card,
+  .platform-shell .business-card,
+  .platform-shell .route-card {
+    padding: 15px;
+    border-radius: 14px;
+  }
+
+  .platform-shell .card-heading {
+    gap: 10px;
+    margin-bottom: 13px;
+  }
+
+  .platform-shell .card-heading h2 {
+    font-size: 18px;
+  }
+
+  .platform-shell .card-heading h3 {
+    font-size: 15px;
+  }
+
+  .platform-shell .field {
+    gap: 6px;
+    margin-bottom: 14px;
+  }
+
+  .platform-shell .field > span,
+  .platform-shell .field-label {
+    font-size: 12px;
+  }
+
+  .platform-shell .field input,
+  .platform-shell .field select,
+  .platform-shell .field textarea,
+  .platform-shell input,
+  .platform-shell select,
+  .platform-shell textarea {
+    min-height: 48px;
+    padding-inline: 13px;
+    border-radius: 11px;
+    font-size: 16px;
+  }
+
+  .platform-shell .field textarea,
+  .platform-shell textarea {
+    min-height: 92px;
+    padding-top: 12px;
+  }
+
+  .platform-shell .media-uploader {
+    margin-bottom: 15px;
+  }
+
+  .platform-shell .media-dropzone {
+    min-height: 128px;
+    padding: 18px 14px;
+    border-radius: 13px;
+  }
+
+  .platform-shell .media-dropzone strong {
+    font-size: 14px;
+  }
+
+  .platform-shell .media-dropzone small {
+    max-width: 32ch;
+    margin-inline: auto;
+    font-size: 11px;
+    line-height: 1.4;
+  }
+
+  .platform-shell .note {
+    gap: 10px;
+    padding: 12px 13px;
+    border-radius: 12px;
+    font-size: 12px;
+    line-height: 1.45;
+  }
+
+  .platform-shell .note svg {
+    width: 18px;
+    height: 18px;
+    flex: 0 0 auto;
+  }
+
+  .platform-shell .error,
+  .platform-shell .success {
+    padding: 11px 12px;
+    border-radius: 11px;
+    font-size: 12px;
+    line-height: 1.4;
+  }
+
+  .platform-shell .route-card {
+    margin-bottom: 10px;
+  }
+
+  .platform-shell .route-card > strong,
+  .platform-shell .route-card > p,
+  .platform-shell .route-card > small {
+    overflow-wrap: anywhere;
+  }
+
+  .platform-shell .route-card > p {
+    margin-bottom: 7px;
+  }
+
+  .platform-shell .route-card > small {
+    margin-bottom: 10px;
+  }
+
+  .platform-shell .route-card .button-row {
+    gap: 8px;
+    margin-top: 10px;
+  }
+
+  .platform-shell .route-card .button-row > button {
+    min-height: 44px;
+  }
+
+  .service-toolbar {
+    display: grid;
+    grid-template-columns: minmax(0,1fr) auto;
+    align-items: end;
+    gap: 10px;
+    margin-bottom: 14px !important;
+  }
+
+  .service-toolbar > div {
+    min-width: 0;
+  }
+
+  .service-toolbar p {
+    margin: 8px 0 0;
+    font-size: 12px;
+    line-height: 1.4;
+  }
+
+  .service-toolbar > button {
+    min-height: 44px;
+    padding-inline: 13px;
+  }
+
+  .service-request-columns {
+    gap: 10px !important;
+  }
+
+  .service-request-columns > .card {
+    padding: 14px;
+  }
+
+  .service-staff-card {
+    padding: 10px 0 !important;
+  }
+
+  .service-staff-card button {
+    min-height: 42px;
+    margin-top: 6px;
+  }
+
+  .settings-layout,
+  .profile-grid,
+  .two-columns {
+    gap: 12px;
+  }
+
+  .platform-shell h3 {
+    margin-top: 18px;
+  }
+
+  .customer-branded {
+    overflow-x: hidden;
+  }
+
+  .customer-branded .customer-wrap,
+  .customer-wrap.customer-branded {
+    padding-right: 13px;
+    padding-bottom: calc(28px + env(safe-area-inset-bottom));
+    padding-left: 13px;
+  }
+
+  .customer-branded .customer-top {
+    padding-top: 10px;
+    padding-bottom: 10px;
+    margin-bottom: 8px;
+  }
+
+  .customer-branded .customer-hero {
+    margin-bottom: 18px;
+  }
+
+  .customer-branded .customer-menu-tools {
+    top: 58px;
+    gap: 9px;
+    padding: 8px 0 10px;
+    margin-bottom: 10px;
+  }
+
+  .customer-branded .menu-item {
+    gap: 9px;
+    padding: 11px;
+  }
+
+  .customer-branded .quantity {
+    gap: 4px;
+  }
+
+  .customer-branded .quantity button {
+    width: 38px;
+    height: 38px;
+    min-height: 38px;
+  }
+
+  .customer-cart-bar {
+    position: sticky;
+    right: auto;
+    bottom: max(10px, env(safe-area-inset-bottom));
+    left: auto;
+    width: 100%;
+    min-height: 58px;
+    margin: 16px 0 0;
+    padding: 8px 12px;
+    border-radius: 15px;
+  }
+
+  .customer-cart-bar .cart-count {
+    width: 32px;
+    height: 32px;
+  }
+
+  .customer-branded .customer-cart-panel {
+    scroll-margin-top: 86px;
+    margin-top: 12px;
+    padding: 18px;
+    border-radius: 17px;
+  }
+
+  .customer-branded .customer-cart-panel h2 {
+    margin-bottom: 16px;
+    font-size: 24px;
+  }
+
+  .customer-order-status-card {
+    padding: 18px !important;
+    border-radius: 17px !important;
+  }
+
+  .customer-order-status-card .card-heading {
+    align-items: flex-start;
+  }
+
+  .customer-order-status-card .list-row {
+    gap: 10px;
+    padding: 11px 0;
+  }
+
+  .customer-order-status-card > p {
+    margin-bottom: 10px;
+  }
+
+  .customer-order-status-card > small {
+    margin-top: 12px;
+    line-height: 1.45;
+  }
+
+  .customer-footer {
+    padding-bottom: 10px;
+  }
+}
+
+@media (max-width: 390px) {
+  .topbar-context {
+    grid-template-columns: minmax(0,1fr) minmax(0,1fr);
+  }
+
+  .topbar-context > .badge {
+    display: none;
+  }
+
+  .mobile-business-select,
+  .mobile-section-select {
+    font-size: 12px;
+  }
+
+  .platform-sidebar nav button.mobile-dock-primary {
+    font-size: 9px !important;
+  }
+}
