@@ -1031,23 +1031,29 @@ export async function createApp(
       return { url: blob.url };
     }
     const { S3Client, PutObjectCommand } = await import("@aws-sdk/client-s3");
-    await new S3Client({
-      region: c.AWS_REGION,
-      endpoint: c.S3_ENDPOINT,
-      forcePathStyle: Boolean(c.S3_ENDPOINT),
-      credentials: c.S3_ACCESS_KEY_ID && c.S3_SECRET_ACCESS_KEY
-        ? { accessKeyId: c.S3_ACCESS_KEY_ID, secretAccessKey: c.S3_SECRET_ACCESS_KEY }
-        : undefined,
-    }).send(
-      new PutObjectCommand({
-        Bucket: c.S3_BUCKET,
-        Key: key,
-        Body: image,
-        ContentType: "image/webp",
-      }),
-    );
-    await auditAsync(u.id, l.tenant_id, "image.uploaded", l.id, { key });
-    return { url: `${c.S3_PUBLIC_ORIGIN}/${key}` };
+    const s3Region = c.S3_ENDPOINT?.includes(".r2.cloudflarestorage.com") ? "auto" : c.AWS_REGION;
+    try {
+      await new S3Client({
+        region: s3Region,
+        endpoint: c.S3_ENDPOINT,
+        forcePathStyle: Boolean(c.S3_ENDPOINT),
+        credentials: c.S3_ACCESS_KEY_ID && c.S3_SECRET_ACCESS_KEY
+          ? { accessKeyId: c.S3_ACCESS_KEY_ID, secretAccessKey: c.S3_SECRET_ACCESS_KEY }
+          : undefined,
+      }).send(
+        new PutObjectCommand({
+          Bucket: c.S3_BUCKET,
+          Key: key,
+          Body: image,
+          ContentType: "image/webp",
+        }),
+      );
+    } catch (error) {
+      app.log.error({ err: error, driver: "s3", bucket: c.S3_BUCKET }, "image upload failed");
+      fail(503, "Image storage is temporarily unavailable. Check the R2 connection and try again.");
+    }
+    await auditAsync(u.id, l.tenant_id, "image.uploaded", l.id, { key, driver: "s3" });
+    return { url: `${c.S3_PUBLIC_ORIGIN?.replace(/\/$/, "")}/${key}` };
   });
   app.get("/api/locations/:lid/routes", async (r) => {
     const { l } = await loc(r, ["owner", "manager"]);
@@ -1071,6 +1077,8 @@ export async function createApp(
         payee: z.string().min(2).max(80),
       })
       .parse(r.body);
+    const existingRoute = await paymentRepository.findEquivalentRoute(l.id, b.label, b.vpa, b.payee);
+    if (existingRoute) return { id: existingRoute.id, existing: true };
     const rid = id();
     const owner = await asyncDb.get<any>("SELECT u.id,u.email FROM users u JOIN memberships m ON m.user_id=u.id WHERE m.tenant_id=? AND m.role='owner' ORDER BY u.id LIMIT 1", [l.tenant_id]);
     if (!owner) fail(409, "Business owner unavailable");

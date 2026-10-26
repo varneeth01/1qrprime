@@ -108,6 +108,11 @@ function formatDate(value: unknown) {
   const parsed = new Date(/(?:Z|[+-]\d{2}:?\d{2})$/i.test(raw) ? raw : `${raw}Z`);
   return Number.isNaN(parsed.getTime()) ? "Date unavailable" : parsed.toLocaleString("en-IN");
 }
+function effectiveItemPricePaise(item: Any) {
+  const regular = Number(item?.price_paise || 0);
+  const discounted = item?.discounted_price_paise == null ? null : Number(item.discounted_price_paise);
+  return discounted != null && discounted > 0 && discounted < regular ? discounted : regular;
+}
 let razorpayLoader: Promise<void> | null = null;
 function loadRazorpayCheckout() {
   if ((window as any).Razorpay) return Promise.resolve();
@@ -1209,6 +1214,16 @@ function Catalogue({ l, done }: any) {
           e.preventDefault();
           const form = e.currentTarget;
           const f = new FormData(form);
+          const categoryId = String(f.get("categoryId") || "");
+          const selectedCategory = (l.categories || []).find((category: Any) => category.id === categoryId);
+          const pricePaise = Math.round(Number(f.get("price")) * 100);
+          const rawDiscount = String(f.get("discountedPrice") || "").trim();
+          const discountedPricePaise = rawDiscount ? Math.round(Number(rawDiscount) * 100) : null;
+          setError("");
+          if (discountedPricePaise != null && (discountedPricePaise <= 0 || discountedPricePaise >= pricePaise)) {
+            setError("Discounted price must be greater than ₹0 and lower than the regular price. Leave it blank for no discount.");
+            return;
+          }
           try {
             await api(
               `/locations/${l.id}/items${edit ? "/" + edit.id : ""}`,
@@ -1216,12 +1231,12 @@ function Catalogue({ l, done }: any) {
               {
                 name: f.get("name"),
                 description: f.get("description"),
-                section: f.get("section"),
-                price_paise: Math.round(Number(f.get("price")) * 100),
+                section: selectedCategory?.name || edit?.section || "Menu",
+                price_paise: pricePaise,
                 available: f.get("available") === "on",
                 image: image || null,
-                categoryId: f.get("categoryId") || null,
-                discountedPricePaise: f.get("discountedPrice") ? Math.round(Number(f.get("discountedPrice")) * 100) : null,
+                categoryId: categoryId || null,
+                discountedPricePaise,
                 foodType: f.get("foodType") || "OTHER",
                 featured: f.get("featured") === "on",
                 stockStatus: f.get("available") === "on" ? "AVAILABLE" : "SOLD_OUT",
@@ -1239,19 +1254,13 @@ function Catalogue({ l, done }: any) {
         <h2>{edit ? "Edit item" : "Add an item"}</h2>
         <ErrorBox error={error} />
         <Field title="Name" name="name" required defaultValue={edit?.name} />
-        <Field
-          title="Section"
-          name="section"
-          defaultValue={edit?.section || "Menu"}
-          required
-        />
-        <label className="field"><span>Category</span><select name="categoryId" defaultValue={edit?.category_id || ""}><option value="">No category</option>{(l.categories || []).map((c: Any) => <option key={c.id} value={c.id}>{c.name}</option>)}</select></label>
+        <label className="field"><span>Category</span><select name="categoryId" defaultValue={edit?.category_id || ""}><option value="">No category</option>{(l.categories || []).map((c: Any) => <option key={c.id} value={c.id}>{c.name}</option>)}</select><small>Category is also used as the customer-facing menu section.</small></label>
         <Field
           title="Description"
           name="description"
           defaultValue={edit?.description || ""}
         />
-        <Field title="Discounted price (₹)" name="discountedPrice" type="number" min="0" step="0.01" defaultValue={edit?.discounted_price_paise ? edit.discounted_price_paise / 100 : ""} />
+        <Field title="Discounted price (₹)" name="discountedPrice" type="number" min="0.01" step="0.01" placeholder="Leave blank for no discount" description="Optional. Must be lower than the regular price." defaultValue={edit?.discounted_price_paise ? edit.discounted_price_paise / 100 : ""} />
         <label className="field"><span>Food type</span><select name="foodType" defaultValue={edit?.food_type || "OTHER"}>{["VEG","NON_VEG","EGG","VEGAN","OTHER"].map((x) => <option key={x}>{x}</option>)}</select></label>
         <Field
           title="Price (₹)"
@@ -2710,7 +2719,7 @@ function Customer({ slug, initialView = "hub" }: { slug: string; initialView?: "
   }, [order, slug]);
   const lines = b?.items.filter((i: Any) => cart[i.id] > 0) || [],
     total = lines.reduce(
-      (sum: number, i: Any) => sum + i.price_paise * cart[i.id],
+      (sum: number, i: Any) => sum + effectiveItemPricePaise(i) * cart[i.id],
       0,
     );
   function change(i: Any, delta: number) {
@@ -3070,8 +3079,8 @@ function Customer({ slug, initialView = "hub" }: { slug: string; initialView?: "
                           <div className="grow">
                             <h3>{i.name}</h3>
                             <p>{i.description}</p>
-                              <strong>{money(i.discounted_price_paise ?? i.price_paise)}</strong>
-                              {i.discounted_price_paise != null && <del>{money(i.price_paise)}</del>}
+                              <strong>{money(effectiveItemPricePaise(i))}</strong>
+                              {effectiveItemPricePaise(i) < Number(i.price_paise) && <del>{money(i.price_paise)}</del>}
                               {i.food_type && i.food_type !== "OTHER" && <Badge tone={i.food_type === "NON_VEG" ? "amber" : "green"}>{label(i.food_type)}</Badge>}
                             {!i.available && <Badge>Unavailable</Badge>}
                           </div>
@@ -3110,7 +3119,7 @@ function Customer({ slug, initialView = "hub" }: { slug: string; initialView?: "
                   <span>
                     {cart[i.id]} × {i.name}
                   </span>
-                  <strong>{money(i.price_paise * cart[i.id])}</strong>
+                  <strong>{money(effectiveItemPricePaise(i) * cart[i.id])}</strong>
                 </div>
               ))}
               <Field

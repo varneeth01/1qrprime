@@ -140,7 +140,7 @@ export const itemSchema = z.object({
   image: z.string().max(2048).nullable().optional().refine((value) => !value || safeMenuImage(value), "Use a public image URL"),
   categoryId: z.uuid().nullable().optional(),
   displayOrder: z.number().int().min(0).max(100000).default(0),
-  discountedPricePaise: z.number().int().min(0).max(10000000).nullable().optional(),
+  discountedPricePaise: z.number().int().min(1).max(10000000).nullable().optional(),
   foodType: z.enum(["VEG", "NON_VEG", "EGG", "VEGAN", "OTHER"]).default("OTHER"),
   tags: z.array(z.string().min(1).max(40)).max(20).default([]),
   prepMinutes: z.number().int().min(0).max(600).default(0),
@@ -150,6 +150,14 @@ export const itemSchema = z.object({
   bestseller: z.boolean().default(false),
   spicy: z.boolean().default(false),
   recommended: z.boolean().default(false),
+}).superRefine((item, ctx) => {
+  if (item.discountedPricePaise != null && item.discountedPricePaise >= item.price_paise) {
+    ctx.addIssue({
+      code: "custom",
+      path: ["discountedPricePaise"],
+      message: "Discounted price must be lower than the regular price",
+    });
+  }
 });
 export const transitions: Record<string, string[]> = {
   submitted: ["accepted", "rejected", "cancelled"],

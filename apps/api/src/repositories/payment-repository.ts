@@ -22,8 +22,37 @@ function normalizeAttempt(row: any) {
 export class PaymentRepository {
   constructor(private readonly db: AsyncDatabase) {}
 
-  listRoutes(locationId: string) {
-    return this.db.all<any>("SELECT r.*,a.status owner_approval_status,a.expires_at owner_approval_expires_at,a.approved_at owner_approved_at FROM routes r LEFT JOIN payment_route_approvals a ON a.route_id=r.id WHERE r.location_id=? ORDER BY r.id", [locationId]);
+  async listRoutes(locationId: string) {
+    const rows = await this.db.all<any>(
+      `SELECT r.*,a.status owner_approval_status,a.expires_at owner_approval_expires_at,a.approved_at owner_approved_at
+       FROM routes r
+       LEFT JOIN payment_route_approvals a
+         ON a.id=(SELECT a2.id FROM payment_route_approvals a2 WHERE a2.route_id=r.id ORDER BY a2.created_at DESC LIMIT 1)
+       WHERE r.location_id=?
+       ORDER BY r.id`,
+      [locationId],
+    );
+    const stateRank: Record<string, number> = {
+      active: 0,
+      verified: 1,
+      verification_pending: 2,
+      draft: 3,
+      disabled: 4,
+    };
+    const unique = new Map<string, any>();
+    for (const row of rows) {
+      const key = `${String(row.label || "").trim().toLowerCase()}|${String(row.vpa || "").trim().toLowerCase()}|${String(row.payee || "").trim().toLowerCase()}`;
+      const previous = unique.get(key);
+      if (!previous || (stateRank[row.state] ?? 99) < (stateRank[previous.state] ?? 99)) unique.set(key, row);
+    }
+    return [...unique.values()];
+  }
+
+  findEquivalentRoute(locationId: string, label: string, vpa: string, payee: string) {
+    return this.db.get<any>(
+      "SELECT * FROM routes WHERE location_id=? AND lower(label)=lower(?) AND lower(vpa)=lower(?) AND lower(payee)=lower(?) AND state!='disabled' ORDER BY CASE state WHEN 'active' THEN 0 WHEN 'verified' THEN 1 WHEN 'verification_pending' THEN 2 ELSE 3 END LIMIT 1",
+      [locationId, label.trim(), vpa.trim(), payee.trim()],
+    );
   }
 
   listRoutesForTenant(tenantId: string) {
