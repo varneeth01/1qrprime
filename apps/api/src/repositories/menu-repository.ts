@@ -31,8 +31,16 @@ export class MenuRepository {
       required: Boolean(group.required),
       modifiers: await this.db.all<any>("SELECT id,name,price_paise,available FROM modifiers WHERE group_id=? AND available=TRUE ORDER BY display_order,name", [group.id]),
     })));
+    const regularPricePaise = Number(item.price_paise);
+    const rawDiscountPaise = item.discounted_price_paise == null ? null : Number(item.discounted_price_paise);
+    const discountedPricePaise =
+      rawDiscountPaise != null && rawDiscountPaise > 0 && rawDiscountPaise < regularPricePaise
+        ? rawDiscountPaise
+        : null;
     return {
       ...item,
+      price_paise: regularPricePaise,
+      discounted_price_paise: discountedPricePaise,
       tags: typeof item.tags === "string" ? JSON.parse(item.tags || "[]") : (item.tags || []),
       available: Boolean(item.available) && item.stock_status !== "UNAVAILABLE" && !Boolean(item.archived),
       featured: Boolean(item.featured),
