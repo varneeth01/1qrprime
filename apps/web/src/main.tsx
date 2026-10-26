@@ -28,6 +28,7 @@ import {
   RefreshCw,
   Search,
   ChevronRight,
+  ChevronDown,
   MapPin,
   Phone,
   Link as LinkIcon,
@@ -53,6 +54,7 @@ import { isPublicMarketingPath } from "./public-marketing-paths";
 import { MarketingWorkspace } from "./marketing-workspace";
 import "./style.css";
 import "./marketing.css";
+import "./apple-ui.css";
 const LazyMarketingRouter = React.lazy(async () => {
   const module = await import("./marketing");
   return { default: module.MarketingRouter };
@@ -73,6 +75,110 @@ function Field({ title, error = "", success = "", description = "", ...props }: 
       {error && <small className="field-message error-text" role="alert">{error}</small>}
       {!error && success && <small className="field-message success-text">{success}</small>}
     </label>
+  );
+}
+function ChoicePicker({
+  title,
+  name,
+  value,
+  defaultValue = "",
+  options,
+  onChange,
+  description = "",
+  disabled = false,
+}: {
+  title: string;
+  name?: string;
+  value?: string;
+  defaultValue?: string;
+  options: { value: string; label: string; detail?: string }[];
+  onChange?: (value: string) => void;
+  description?: string;
+  disabled?: boolean;
+}) {
+  const controlled = value !== undefined;
+  const [internalValue, setInternalValue] = useState(defaultValue);
+  const [open, setOpen] = useState(false);
+  const currentValue = controlled ? String(value ?? "") : internalValue;
+  const selected = options.find((option) => option.value === currentValue) || options[0];
+
+  useEffect(() => {
+    if (!open) return;
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setOpen(false);
+    };
+    document.documentElement.classList.add("choice-picker-open");
+    window.addEventListener("keydown", closeOnEscape);
+    return () => {
+      document.documentElement.classList.remove("choice-picker-open");
+      window.removeEventListener("keydown", closeOnEscape);
+    };
+  }, [open]);
+
+  function choose(next: string) {
+    if (!controlled) setInternalValue(next);
+    onChange?.(next);
+    setOpen(false);
+  }
+
+  return (
+    <div className="field choice-picker-field">
+      <span>{title}</span>
+      {name && <input type="hidden" name={name} value={currentValue} />}
+      <button
+        type="button"
+        className="choice-picker-trigger"
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        disabled={disabled}
+        onClick={() => setOpen(true)}
+      >
+        <span>{selected?.label || "Choose"}</span>
+        <ChevronDown size={17} />
+      </button>
+      {description && <small>{description}</small>}
+      {open && (
+        <div
+          className="choice-picker-backdrop"
+          role="presentation"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) setOpen(false);
+          }}
+        >
+          <section className="choice-picker-sheet" role="dialog" aria-modal="true" aria-label={title}>
+            <div className="choice-picker-handle" />
+            <div className="choice-picker-heading">
+              <div>
+                <small>SELECT</small>
+                <strong>{title}</strong>
+              </div>
+              <button type="button" className="choice-picker-done" onClick={() => setOpen(false)}>Done</button>
+            </div>
+            <div className="choice-picker-options" role="listbox" aria-label={title}>
+              {options.map((option) => {
+                const active = option.value === currentValue;
+                return (
+                  <button
+                    type="button"
+                    role="option"
+                    aria-selected={active}
+                    className={`choice-picker-option ${active ? "active" : ""}`}
+                    key={option.value}
+                    onClick={() => choose(option.value)}
+                  >
+                    <span>
+                      <strong>{option.label}</strong>
+                      {option.detail && <small>{option.detail}</small>}
+                    </span>
+                    {active && <Check size={18} />}
+                  </button>
+                );
+              })}
+            </div>
+          </section>
+        </div>
+      )}
+    </div>
   );
 }
 function MediaUploader({ locationId, value, onChange, title }: { locationId: string; value?: string | null; onChange: (url: string | null) => void; title: string }) {
@@ -1269,14 +1375,31 @@ function Catalogue({ l, done }: any) {
         <h2>{edit ? "Edit item" : "Add an item"}</h2>
         <ErrorBox error={error} />
         <Field title="Name" name="name" required defaultValue={edit?.name} />
-        <label className="field"><span>Category</span><select name="categoryId" defaultValue={edit?.category_id || ""}><option value="">No category</option>{(l.categories || []).map((c: Any) => <option key={c.id} value={c.id}>{c.name}</option>)}</select><small>Category is also used as the customer-facing menu section.</small></label>
+        <ChoicePicker
+          title="Category"
+          name="categoryId"
+          defaultValue={edit?.category_id || ""}
+          options={[{ value: "", label: "No category", detail: "Keep this item in the default Menu section" }, ...(l.categories || []).map((category: Any) => ({ value: String(category.id), label: category.name, detail: category.available ? "Visible on the customer menu" : "Currently hidden" }))]}
+          description="Category is also used as the customer-facing menu section."
+        />
         <Field
           title="Description"
           name="description"
           defaultValue={edit?.description || ""}
         />
         <Field title="Discounted price (₹)" name="discountedPrice" type="number" min="0.01" step="0.01" placeholder="Leave blank for no discount" description="Optional. Must be lower than the regular price." defaultValue={edit?.discounted_price_paise ? edit.discounted_price_paise / 100 : ""} />
-        <label className="field"><span>Food type</span><select name="foodType" defaultValue={edit?.food_type || "OTHER"}>{["VEG","NON_VEG","EGG","VEGAN","OTHER"].map((x) => <option key={x}>{x}</option>)}</select></label>
+        <ChoicePicker
+          title="Food type"
+          name="foodType"
+          defaultValue={edit?.food_type || "OTHER"}
+          options={[
+            { value: "VEG", label: "Vegetarian" },
+            { value: "NON_VEG", label: "Non-vegetarian" },
+            { value: "EGG", label: "Egg" },
+            { value: "VEGAN", label: "Vegan" },
+            { value: "OTHER", label: "Other / not specified" },
+          ]}
+        />
         <Field
           title="Price (₹)"
           name="price"
@@ -3187,35 +3310,23 @@ function Customer({ slug, initialView = "hub" }: { slug: string; initialView?: "
                 <Field title="Landmark (optional)" value={landmark} disabled={pending} onChange={(e: any) => setLandmark(e.target.value)} />
               </>}
               {b.table && <p className="table-context">Ordering for <strong>{b.table.name}</strong></p>}
-              <label className="field">
-                <span>Order type</span>
-                <select
-                  disabled={pending}
-                  value={type}
-                  onChange={(e) => setType(e.target.value)}
-                >
-                  {b.profile.orderTypes.map((t: string) => (
-                    <option value={t} key={t}>
-                      {label(t)}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label className="field">
-                <span>Payment method</span>
-                <select
-                  disabled={pending}
-                  value={method}
-                  onChange={(e) => setMethod(e.target.value)}
-                >
-                  {b.profile.payAtCounter && (
-                    <option value="counter">Pay at counter</option>
-                  )}
-                  {b.paymentAvailable && (
-                    <option value="upi">UPI · confirmation pending</option>
-                  )}
-                </select>
-              </label>
+              <ChoicePicker
+                title="Order type"
+                value={type}
+                disabled={pending}
+                onChange={setType}
+                options={b.profile.orderTypes.map((orderType: string) => ({ value: orderType, label: label(orderType) }))}
+              />
+              <ChoicePicker
+                title="Payment method"
+                value={method}
+                disabled={pending}
+                onChange={setMethod}
+                options={[
+                  ...(b.profile.payAtCounter ? [{ value: "counter", label: "Pay at counter", detail: "Pay directly at the business" }] : []),
+                  ...(b.paymentAvailable ? [{ value: "upi", label: "UPI", detail: "Payment stays pending until the business confirms it" }] : []),
+                ]}
+              />
               <button
                 className="primary wide"
                   disabled={
