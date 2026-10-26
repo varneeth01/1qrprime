@@ -1042,6 +1042,8 @@ export async function createApp(
         payee: z.string().min(2).max(80),
       })
       .parse(r.body);
+    const existingRoute = await paymentRepository.findEquivalentRoute(l.id, b.label, b.vpa, b.payee);
+    if (existingRoute) return { id: existingRoute.id, existing: true };
     const rid = id();
     const owner = await asyncDb.get<any>("SELECT u.id,u.email FROM users u JOIN memberships m ON m.user_id=u.id WHERE m.tenant_id=? AND m.role='owner' ORDER BY u.id LIMIT 1", [l.tenant_id]);
     if (!owner) fail(409, "Business owner unavailable");
