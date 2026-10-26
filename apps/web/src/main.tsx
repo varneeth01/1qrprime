@@ -1773,11 +1773,16 @@ function Payments({ l, emailVerified }: any) {
     [verificationRoute, setVerificationRoute] = useState<string | null>(null),
     [evidence, setEvidence] = useState("");
   async function act(path: string, body: Any = {}) {
+    setFailure("");
     try {
       await api(`/locations/${l.id}/routes/${path}`, "POST", body);
-      load();
+      await load();
     } catch (e) {
-      setFailure((e as Error).message);
+      const message =
+        e instanceof ApiError && typeof e.data?.error === "string"
+          ? e.data.error
+          : (e as Error).message;
+      setFailure(message);
     }
   }
   return (
@@ -1821,18 +1826,37 @@ function Payments({ l, emailVerified }: any) {
               <strong>{r.vpa}</strong>
               <p>{r.payee}</p>
               <small>
-                Manual confirmation · independent verification required
+                {r.state === "draft" && r.owner_approval_status === "pending_owner_approval"
+                  ? "Owner confirmation pending · use the confirmation link sent to the owner email."
+                  : r.state === "draft" && r.owner_approval_status === "owner_approved"
+                    ? "Owner confirmed · ready for independent verification."
+                    : r.state === "draft"
+                      ? "Owner confirmation is required before independent verification."
+                      : "Manual confirmation · independent verification required"}
               </small>
               <div className="button-row">
-                {r.state === "draft" && l.role === "owner" && (
-                  <button
-                    className="secondary"
-                    onClick={() => setVerificationRoute(r.id)}
-                  >
-                    Request verification
-                  </button>
-                )}
-                {verificationRoute === r.id && (
+                {r.state === "draft" &&
+                  l.role === "owner" &&
+                  r.owner_approval_status === "owner_approved" && (
+                    <button
+                      className="secondary"
+                      onClick={() => {
+                        setFailure("");
+                        setVerificationRoute(r.id);
+                      }}
+                    >
+                      Request verification
+                    </button>
+                  )}
+                {r.state === "draft" &&
+                  l.role === "owner" &&
+                  r.owner_approval_status !== "owner_approved" && (
+                    <button className="secondary" type="button" disabled>
+                      Awaiting owner confirmation
+                    </button>
+                  )}
+                {verificationRoute === r.id &&
+                  r.owner_approval_status === "owner_approved" && (
                   <form
                     className="inline-form"
                     onSubmit={async (e) => {
@@ -1893,15 +1917,20 @@ function Payments({ l, emailVerified }: any) {
               }
               const form = e.currentTarget;
               try {
+                setFailure("");
                 await api(
                   `/locations/${l.id}/routes`,
                   "POST",
                   Object.fromEntries(new FormData(form)),
                 );
                 form.reset();
-                load();
+                await load();
               } catch (e) {
-                setFailure((e as Error).message);
+                const message =
+                  e instanceof ApiError && typeof e.data?.error === "string"
+                    ? e.data.error
+                    : (e as Error).message;
+                setFailure(message);
               }
             }}
           >
