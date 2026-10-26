@@ -25,6 +25,7 @@ import {
   Download,
   Menu as MenuIcon,
   Bell,
+  CircleAlert,
   RefreshCw,
   Search,
   ChevronRight,
@@ -59,10 +60,14 @@ const LazyMarketingRouter = React.lazy(async () => {
   const module = await import("./marketing");
   return { default: module.MarketingRouter };
 });
-function ErrorBox({ error }: { error: string }) {
+function ErrorBox({ error, title = "Something needs attention" }: { error: string; title?: string }) {
   return error ? (
-    <div role="alert" className="error">
-      {error}
+    <div role="alert" className="feedback-banner feedback-error">
+      <span className="feedback-icon"><CircleAlert size={18} /></span>
+      <span>
+        <strong>{title}</strong>
+        <small>{error}</small>
+      </span>
     </div>
   ) : null;
 }
@@ -483,6 +488,28 @@ const nav = [
   ["profile", "Business profile", Store],
   ["settings", "Settings", Settings],
 ] as const;
+
+const navGroups = [
+  { label: "Run", keys: ["overview", "orders", "service", "menu", "tables"] },
+  { label: "Grow", keys: ["payments", "qr", "customer", "analytics", "marketing"] },
+  { label: "Manage", keys: ["staff", "profile", "settings"] },
+] as const;
+
+const sectionCopy: Record<string, string> = {
+  overview: "A calm view of what needs attention right now.",
+  orders: "Track every order from accepted to served.",
+  service: "Keep table requests moving without losing context.",
+  menu: "Build a menu that is fast to edit and easy to order from.",
+  tables: "Manage table QR codes, assignments and table activity.",
+  payments: "Control where customers pay and keep every change auditable.",
+  qr: "Download, print and share the QR customers will actually use.",
+  customer: "Shape the customer experience before anyone scans your QR.",
+  analytics: "See the signals that matter without drowning in metrics.",
+  marketing: "Create offers and bring customers back with less effort.",
+  staff: "Give the right people the right access.",
+  profile: "Keep your public business details accurate and current.",
+  settings: "Manage account, plan and operational preferences.",
+};
 function App() {
   const [me, setMe] = useState<Any | null>(null),
     [loading, setLoading] = useState(true),
@@ -587,31 +614,34 @@ function App() {
           ))}
         </select>
         <nav aria-label="Business navigation">
-          {me.locations.length > 1 && <button className={section === "portfolio" ? "active" : ""} onClick={() => setSection("portfolio")}><LayoutDashboard size={19} />Portfolio</button>}
-          {visibleNav.map(([key, title, Icon]) => (
-              <button
-                className={`${section === key ? "active" : ""} ${["overview", "orders", "service", "menu", "payments"].includes(key) ? "mobile-dock-primary" : "mobile-dock-secondary"}`.trim()}
-                key={key}
-                onClick={() => {
-                  setSection(key);
-                  setError("");
-                }}
-              >
-                <Icon size={19} />
-                {title}
-                {key === "orders" && <span className="nav-dot" />}
-              </button>
-            ))}
-          {l?.role === "owner" && <button onClick={() => setSection("new")}>
-            <Plus size={19} />
-            Add business
-          </button>}
-          {me.adminRole && (
-            <button onClick={() => setSection("admin")}>
-              <ShieldCheck size={19} />
-              Support console
-            </button>
-          )}
+          {me.locations.length > 1 && <button className={section === "portfolio" ? "active nav-portfolio" : "nav-portfolio"} onClick={() => setSection("portfolio")}><LayoutDashboard size={19} />Portfolio</button>}
+          {navGroups.map((group) => {
+            const items = visibleNav.filter(([key]) => group.keys.includes(key as any));
+            if (!items.length) return null;
+            return (
+              <div className="nav-group" key={group.label}>
+                <span className="nav-group-label">{group.label}</span>
+                {items.map(([key, title, Icon]) => (
+                  <button
+                    className={`${section === key ? "active" : ""} ${["overview", "orders", "service", "menu", "payments"].includes(key) ? "mobile-dock-primary" : "mobile-dock-secondary"}`.trim()}
+                    key={key}
+                    onClick={() => {
+                      setSection(key);
+                      setError("");
+                    }}
+                  >
+                    <Icon size={19} />
+                    <span>{title}</span>
+                    {key === "orders" && <span className="nav-dot" />}
+                  </button>
+                ))}
+              </div>
+            );
+          })}
+          <div className="nav-group nav-group-final">
+            {l?.role === "owner" && <button className="mobile-dock-secondary" onClick={() => setSection("new")}><Plus size={19} /><span>Add business</span></button>}
+            {me.adminRole && <button className="mobile-dock-secondary" onClick={() => setSection("admin")}><ShieldCheck size={19} /><span>Support console</span></button>}
+          </div>
         </nav>
         <div className="sidebar-foot">
           <span className="avatar">{me.email[0].toUpperCase()}</span>
@@ -707,11 +737,7 @@ function App() {
                       ? `Good evening, ${l.name}`
                       : nav.find((x) => x[0] === section)?.[1]}
                   </h1>
-                  <p>
-                    {section === "overview"
-                      ? "Your orders, menu and customer experience at a glance."
-                      : `Manage ${l.name} with clarity.`}
-                  </p>
+                  <p>{sectionCopy[section] || "Everything you need to run this business in one place."}</p>
                 </div>
                 <a
                   className="button secondary"
@@ -1908,212 +1934,212 @@ function Requests({ l }: any) {
 function Payments({ l, emailVerified }: any) {
   const { data, error, load } = usePoll(`/locations/${l.id}/routes`, 15000),
     [failure, setFailure] = useState(""),
+    [notice, setNotice] = useState(""),
+    [busyAction, setBusyAction] = useState(""),
     [verificationRoute, setVerificationRoute] = useState<string | null>(null),
     [evidence, setEvidence] = useState("");
-  async function act(path: string, body: Any = {}) {
+
+  const friendlyError = (value: unknown) => {
+    const raw =
+      value instanceof ApiError && typeof value.data?.error === "string"
+        ? value.data.error
+        : value instanceof Error
+          ? value.message
+          : String(value || "");
+    if (/service unavailable|email delivery|smtp/i.test(raw))
+      return "The destination is safe, but the confirmation service is temporarily unavailable. Try sending the confirmation again.";
+    return raw || "That action could not be completed.";
+  };
+
+  async function act(path: string, body: Any = {}, success = "") {
     setFailure("");
+    setNotice("");
+    setBusyAction(path);
     try {
       await api(`/locations/${l.id}/routes/${path}`, "POST", body);
       await load();
+      if (success) setNotice(success);
+      return true;
     } catch (e) {
-      const message =
-        e instanceof ApiError && typeof e.data?.error === "string"
-          ? e.data.error
-          : (e as Error).message;
-      setFailure(message);
+      setFailure(friendlyError(e));
+      return false;
+    } finally {
+      setBusyAction("");
     }
   }
+
   return (
-    <>
-      <div className="note">
-        <ShieldCheck />
-        <span>
-          <strong>Your destination. Your decision.</strong> Routes require
-          independent verification before activation. Switching affects new
-          attempts only; it cannot fix a customer’s bank or app failure.
-        </span>
-      </div>
+    <div className="payments-workspace">
+      <section className="payments-intro">
+        <div>
+          <Badge tone="green">PAYMENT CONTROL</Badge>
+          <h2>One active destination. No ambiguity.</h2>
+          <p>Every destination is confirmed by the owner before it can move to verification. Switching never changes historical attempts.</p>
+        </div>
+        <ShieldCheck size={30} />
+      </section>
+
       {!emailVerified && l.role === "owner" && (
-        <div className="note">
-          <ShieldCheck />
-          <span>
-            <strong>Verify your email to add payment destinations.</strong>{" "}
-            Existing routes remain visible, but production blocks new payment
-            destinations until the owner email is verified.
-          </span>
+        <div className="feedback-banner feedback-warning">
+          <span className="feedback-icon"><MailCheck size={18} /></span>
+          <span><strong>Verify your email first</strong><small>You can review existing destinations now. Adding a new one unlocks after email verification.</small></span>
         </div>
       )}
-      <ErrorBox error={failure || error} />
-      <div className="two-columns">
-        <section className="card">
+      <ErrorBox error={failure || error} title="Payments need attention" />
+      {notice && <div className="feedback-banner feedback-success"><span className="feedback-icon"><Check size={18} /></span><span><strong>Done</strong><small>{notice}</small></span></div>}
+
+      <div className="payments-layout">
+        <section className="card payments-list-card">
           <div className="card-heading">
-            <h2>Payment destinations</h2>
-            {data?.previousId && <button className="text-button" onClick={() => act("rollback")}>Restore previous destination ↶</button>}
+            <div><span className="eyebrow">DESTINATIONS</span><h2>Where customers pay</h2></div>
+            {data?.previousId && <button className="text-button" disabled={!!busyAction} onClick={() => void act("rollback", {}, "Previous verified destination restored.")}>Restore previous</button>}
           </div>
-          {data?.routes.map((r: Any) => (
-            <div
-              className={`route-card ${r.state === "active" ? "route-active" : ""}`}
-              key={r.id}
-            >
-              <div className="card-heading">
-                <h3>{r.label}</h3>
-                <Badge tone={r.state === "active" ? "green" : ""}>
-                  {label(r.state)}
-                </Badge>
-              </div>
-              <strong>{r.vpa}</strong>
-              <p>{r.payee}</p>
-              <small>
-                {r.state === "draft" && r.owner_approval_status === "pending_owner_approval"
-                  ? "Owner confirmation pending · use the confirmation link sent to the owner email."
-                  : r.state === "draft" && r.owner_approval_status === "owner_approved"
-                    ? "Owner confirmed · ready for independent verification."
-                    : r.state === "draft"
-                      ? "Owner confirmation is required before independent verification."
-                      : "Manual confirmation · independent verification required"}
-              </small>
-              <div className="button-row">
-                {r.state === "draft" &&
-                  l.role === "owner" &&
-                  r.owner_approval_status === "owner_approved" && (
-                    <button
-                      className="secondary"
-                      onClick={() => {
-                        setFailure("");
-                        setVerificationRoute(r.id);
-                      }}
-                    >
-                      Request verification
-                    </button>
-                  )}
-                {r.state === "draft" &&
-                  l.role === "owner" &&
-                  r.owner_approval_status !== "owner_approved" && (
-                    <button className="secondary" type="button" disabled>
-                      Awaiting owner confirmation
-                    </button>
-                  )}
-                {verificationRoute === r.id &&
-                  r.owner_approval_status === "owner_approved" && (
-                  <form
-                    className="inline-form"
-                    onSubmit={async (e) => {
+
+          <div className="payment-route-list">
+            {data?.routes?.map((r: Any) => {
+              const awaitingOwner = r.state === "draft" && r.owner_approval_status !== "owner_approved";
+              return (
+                <article className={`payment-route ${r.state === "active" ? "active" : ""}`} key={r.id}>
+                  <div className="payment-route-top">
+                    <div>
+                      <div className="payment-route-title"><strong>{r.label}</strong><Badge tone={r.state === "active" ? "green" : ""}>{r.state === "active" ? "Active" : label(r.state)}</Badge></div>
+                      <span className="payment-vpa">{r.vpa}</span>
+                      <small>{r.payee}</small>
+                    </div>
+                    {r.state === "active" && <span className="payment-active-mark"><Check size={16} /></span>}
+                  </div>
+
+                  <div className="payment-status-line">
+                    <span className={`status-dot ${r.owner_approval_status === "owner_approved" ? "ok" : ""}`} />
+                    <span>
+                      {r.state === "draft" && r.owner_approval_status === "owner_approved"
+                        ? "Owner confirmed. Ready for verification."
+                        : r.state === "draft"
+                          ? "Waiting for the owner confirmation email."
+                          : r.state === "verification_pending"
+                            ? "Verification requested. No action needed right now."
+                            : r.state === "verified"
+                              ? "Verified and ready to activate."
+                              : r.state === "active"
+                                ? "Customers are currently routed here."
+                                : "This destination is no longer available."}
+                    </span>
+                  </div>
+
+                  <div className="payment-route-actions">
+                    {awaitingOwner && l.role === "owner" && (
+                      <button
+                        className="secondary"
+                        type="button"
+                        disabled={!!busyAction}
+                        onClick={() => void act(`${r.id}/resend-confirmation`, {}, "A fresh confirmation email was sent.")}
+                      >
+                        {busyAction === `${r.id}/resend-confirmation` ? "Sending…" : "Resend confirmation"}
+                      </button>
+                    )}
+                    {r.state === "draft" && l.role === "owner" && r.owner_approval_status === "owner_approved" && (
+                      <button className="secondary" onClick={() => { setFailure(""); setNotice(""); setVerificationRoute(r.id); }}>Request verification</button>
+                    )}
+                    {r.state === "verified" && (
+                      <button className="primary" disabled={!!busyAction} onClick={() => void act(`${r.id}/activate`, { reason: "Merchant selected route" }, "Payment destination activated.")}>
+                        {busyAction === `${r.id}/activate` ? "Activating…" : "Make active"}
+                      </button>
+                    )}
+                    {r.state !== "active" && r.state !== "disabled" && l.role === "owner" && (
+                      <button className="text-button danger" disabled={!!busyAction} onClick={() => void act(`${r.id}/disable`, {}, "Payment destination disabled.")}>Disable</button>
+                    )}
+                  </div>
+
+                  {verificationRoute === r.id && r.owner_approval_status === "owner_approved" && (
+                    <form className="verification-panel" onSubmit={async (e) => {
                       e.preventDefault();
                       if (!evidence.trim()) return;
-                      await act(`${r.id}/request-verification`, { evidence: evidence.trim() });
-                      setEvidence("");
-                      setVerificationRoute(null);
-                    }}
-                  >
-                    <Field title="Verification reference" name="evidence" value={evidence} onChange={(e: any) => setEvidence(e.target.value)} placeholder="Reference checked ownership evidence" required />
-                    <small>Do not include bank passwords, PINs or full account numbers.</small>
-                    <div className="button-row">
-                      <button className="primary" type="submit">Submit for review</button>
-                      <button className="text-button" type="button" onClick={() => setVerificationRoute(null)}>Cancel</button>
-                    </div>
-                  </form>
-                )}
-                {r.state === "verified" && (
-                  <button
-                    className="primary"
-                    onClick={() =>
-                      act(`${r.id}/activate`, {
-                        reason: "Merchant selected route",
-                      })
-                    }
-                  >
-                    Make active
-                  </button>
-                )}
-                {r.state !== "active" &&
-                  r.state !== "disabled" &&
-                  l.role === "owner" && (
-                    <button
-                      className="text-button danger"
-                      onClick={() => act(`${r.id}/disable`)}
-                    >
-                      Disable
-                    </button>
+                      const ok = await act(`${r.id}/request-verification`, { evidence: evidence.trim() }, "Verification request submitted.");
+                      if (ok) { setEvidence(""); setVerificationRoute(null); }
+                    }}>
+                      <Field title="Verification reference" name="evidence" value={evidence} onChange={(e: any) => setEvidence(e.target.value)} placeholder="Reference checked ownership evidence" required />
+                      <small>Do not include passwords, PINs or full account numbers.</small>
+                      <div className="button-row">
+                        <button className="primary" type="submit" disabled={!!busyAction}>{busyAction ? "Submitting…" : "Submit for review"}</button>
+                        <button className="text-button" type="button" onClick={() => setVerificationRoute(null)}>Cancel</button>
+                      </div>
+                    </form>
                   )}
-              </div>
-            </div>
-          ))}
-          {!data?.routes.length && (
-            <Empty title="Add your first destination">
-              Start with a merchant UPI ID and request verification.
-            </Empty>
-          )}
+                </article>
+              );
+            })}
+          </div>
+
+          {!data?.routes?.length && <Empty title="No payment destination yet">Add your merchant UPI ID to start the confirmation flow.</Empty>}
         </section>
+
         {l.role === "owner" && (
-          <form
-            className="card"
-            onSubmit={async (e) => {
-              e.preventDefault();
-              if (!emailVerified) {
-                setFailure("Verify your email before adding payment destinations.");
-                return;
-              }
-              const form = e.currentTarget;
-              try {
-                setFailure("");
-                await api(
-                  `/locations/${l.id}/routes`,
-                  "POST",
-                  Object.fromEntries(new FormData(form)),
-                );
-                form.reset();
-                await load();
-              } catch (e) {
-                const message =
-                  e instanceof ApiError && typeof e.data?.error === "string"
-                    ? e.data.error
-                    : (e as Error).message;
-                setFailure(message);
-              }
-            }}
-          >
-            <h2>Add a destination</h2>
-            <Field
-              title="Label"
-              name="label"
-              placeholder="Primary business account"
-              required
-            />
-            <Field
-              title="Merchant UPI ID"
-              name="vpa"
-              placeholder="business@bank"
-              required
-            />
-            <Field title="Payee name" name="payee" required />
-            <p className="muted">
-              New destinations are saved as drafts. Support must independently
-              verify merchant ownership before activation.
-            </p>
-            <button className="primary" disabled={!emailVerified}>
-              Submit payment destination <Plus size={16} />
+          <form className="card payment-add-card" onSubmit={async (e) => {
+            e.preventDefault();
+            if (!emailVerified) {
+              setFailure("Verify your email before adding payment destinations.");
+              return;
+            }
+            const form = e.currentTarget;
+            setFailure("");
+            setNotice("");
+            setBusyAction("create");
+            try {
+              const result = await api(`/locations/${l.id}/routes`, "POST", Object.fromEntries(new FormData(form))) as Any;
+              form.reset();
+              await load();
+              if (result?.confirmationDelivery === "failed")
+                setNotice("Destination saved. The confirmation email could not be delivered yet — use Resend confirmation when mail service is available.");
+              else
+                setNotice(result?.existing ? "That destination already exists, so no duplicate was created." : "Destination saved and confirmation email sent.");
+            } catch (e) {
+              setFailure(friendlyError(e));
+            } finally {
+              setBusyAction("");
+            }
+          }}>
+            <div className="card-heading"><div><span className="eyebrow">NEW DESTINATION</span><h2>Add merchant UPI</h2></div><Wallet size={22} /></div>
+            <p className="muted">Use the UPI ID customers should pay. Nothing becomes active until confirmation and verification finish.</p>
+            <Field title="Label" name="label" placeholder="Primary business account" required />
+            <Field title="Merchant UPI ID" name="vpa" placeholder="business@bank" autoCapitalize="none" required />
+            <Field title="Payee name" name="payee" placeholder="Name customers should see" required />
+            <button className="primary wide" disabled={!emailVerified || !!busyAction}>
+              {busyAction === "create" ? "Saving destination…" : "Save destination"} <ArrowUpRight size={16} />
             </button>
           </form>
         )}
       </div>
-    </>
+    </div>
   );
 }
 function QrStudio({ l }: any) {
   const [kind, setKind] = useState("page");
+  const [feedback, setFeedback] = useState("");
+  const [failure, setFailure] = useState("");
   const publicUrl = `${browserOrigin}/q/${l.publicId}`;
+
   async function share() {
-    if (navigator.share) await navigator.share({ title: l.name, text: "Scan to explore and order", url: publicUrl });
-    else await navigator.clipboard.writeText(publicUrl);
+    setFailure(""); setFeedback("");
+    try {
+      if (navigator.share) {
+        await navigator.share({ title: l.name, text: "Scan to explore and order", url: publicUrl });
+        setFeedback("Share sheet opened.");
+      } else {
+        await navigator.clipboard.writeText(publicUrl);
+        setFeedback("Public link copied.");
+      }
+    } catch (e) {
+      if ((e as Error).name !== "AbortError") setFailure("Sharing was blocked by the browser. Copy the public link instead.");
+    }
   }
+
   function printCard() {
+    setFailure(""); setFeedback("");
     const w = window.open("", "1qr-print-card", "width=600,height=760");
-    if (!w) return;
-    // Build the print document with DOM APIs. Business names are tenant-controlled
-    // text and must never be interpolated into HTML written with document.write.
+    if (!w) { setFailure("Your browser blocked the print window. Allow pop-ups for 1QR Prime and try again."); return; }
     w.document.title = `${l.name} · 1QR`;
     const style = w.document.createElement("style");
-    style.textContent = "body{font-family:Arial;text-align:center;padding:40px;color:#174f43}img{width:420px;max-width:90vw}h1{font-size:32px}p{letter-spacing:2px;font-weight:bold}";
+    style.textContent = "body{font-family:-apple-system,BlinkMacSystemFont,'Helvetica Neue',Arial;text-align:center;padding:48px;color:#111;background:#fff}img{width:420px;max-width:90vw}h1{font-size:32px;margin-bottom:8px}p{letter-spacing:.08em;font-weight:700;color:#666}";
     const heading = w.document.createElement("h1");
     heading.textContent = l.name;
     const intro = w.document.createElement("p");
@@ -2125,79 +2151,61 @@ function QrStudio({ l }: any) {
     outro.textContent = "Scan · Browse · Order";
     w.document.head.append(style);
     w.document.body.append(heading, intro, image, outro);
-    w.document.close(); w.focus(); w.print();
+    w.document.close();
+    w.focus();
+    window.setTimeout(() => { w.print(); setFeedback("Print layout opened."); }, 250);
   }
+
   return (
-    <div className="two-columns">
-      <section className="card qr-card">
-        {!localOrigin && !temporaryPreviewOrigin && <Badge>READY FOR YOUR COUNTER</Badge>}
-        <h2>{l.name}</h2>
-        <p>
-          {kind === "page"
-            ? "Scan to explore, connect and order"
-            : "Scan with a compatible UPI app to pay"}
-        </p>
-        {kind === "page" || l.active_route_id ? (
-          <img
-            className="qr-image"
-            src={`/api/locations/${l.id}/qr?format=svg&kind=${kind}`}
-            alt={`${l.name} ${kind} QR code`}
-          />
-        ) : (
-          <Empty title="No active payment route">
-            Verify and activate a destination first.
-          </Empty>
-        )}
-        <Brand />
+    <div className="qr-workspace">
+      <section className="card qr-hero-card">
+        <div className="qr-hero-copy">
+          <Badge tone="green">{kind === "page" ? "CUSTOMER QR" : "PAYMENT QR"}</Badge>
+          <h2>{kind === "page" ? "One scan into your business." : "A dedicated UPI payment code."}</h2>
+          <p>{kind === "page" ? "Customers can open your menu, order, pay, review and contact you from one permanent link." : "Use this only when you want a standalone payment QR."}</p>
+        </div>
+        <div className="qr-display">
+          {kind === "page" || l.active_route_id ? (
+            <img className="qr-image" src={`/api/locations/${l.id}/qr?format=svg&kind=${kind}`} alt={`${l.name} ${kind} QR code`} />
+          ) : (
+            <Empty title="Payment QR unavailable">Activate a verified payment destination first.</Empty>
+          )}
+          <div className="qr-business-label"><strong>{l.name}</strong><small>Powered by 1QR Prime</small></div>
+        </div>
       </section>
-      <section className="card">
-        <h2>Your QR, made to last.</h2>
-        <p>
-          The business-page QR uses a stable URL. Update your details without
-          reprinting.
-        </p>
-        <label className="field">
-          <span>QR format</span>
-          <select value={kind} onChange={(e) => setKind(e.target.value)}>
-            <option value="page">Business page · regular phone camera</option>
-            <option value="payment">Payment only · UPI app</option>
-          </select>
-        </label>
-        <div className="button-row">
-          {["png", "svg"].map((f) => (
-            <a
-              className="button primary"
-              key={f}
-              href={`/api/locations/${l.id}/qr?format=${f}&kind=${kind}`}
-              download
-            >
-              <Download size={17} />
-              {f.toUpperCase()}
+
+      <section className="card qr-control-card">
+        <div className="card-heading"><div><span className="eyebrow">EXPORT</span><h2>Ready for print or share</h2></div><QrCode size={23} /></div>
+        <ChoicePicker
+          title="QR type"
+          value={kind}
+          onChange={setKind}
+          options={[
+            { value: "page", label: "Customer page", detail: "Best for tables, counters, packaging and posters" },
+            { value: "payment", label: "Payment only", detail: "Opens directly in a compatible UPI app" },
+          ]}
+        />
+        <ErrorBox error={failure} title="QR action could not finish" />
+        {feedback && <div className="feedback-banner feedback-success"><span className="feedback-icon"><Check size={18} /></span><span><strong>Ready</strong><small>{feedback}</small></span></div>}
+        <div className="qr-actions-primary">
+          {["png", "svg"].map((format) => (
+            <a className="button primary" key={format} href={`/api/locations/${l.id}/qr?format=${format}&kind=${kind}`} download>
+              <Download size={17} /> Download {format.toUpperCase()}
             </a>
           ))}
         </div>
-        <div className="button-row">
-          <button className="secondary" onClick={share}>Share / copy link</button>
+        <div className="qr-actions-secondary">
+          <button className="secondary" onClick={() => void share()}>Share or copy link</button>
           <button className="secondary" onClick={printCard}>Print card</button>
         </div>
-        <p className="public-link"><strong>{localOrigin || temporaryPreviewOrigin ? "Permanent QR URL" : "Public URL"}</strong><br />{localOrigin || temporaryPreviewOrigin ? "Your printed QR remains stable as your business changes." : publicUrl}</p>
-        <h3>Print with confidence</h3>
-        <ul>
-          <li>PNG: 1200 × 1200 pixels. Print at 100 × 100 mm or larger.</li>
-          <li>SVG: vector artwork for your printer.</li>
-          <li>
-            Keep the white border and black modules. Do not add a logo or reduce
-            contrast.
-          </li>
-          <li>
-            Test the final printed code on customer devices before putting it on
-            display.
-          </li>
-        </ul>
-        <div className="note">
-          One QR opening different destinations by scanner is unverified. Use
-          the business-page QR and its Pay action, or display a separate payment
-          QR. Printed payment QRs do not change when routes switch.
+        <div className="qr-link-box"><span>Permanent public link</span><strong>{publicUrl}</strong></div>
+        <div className="qr-print-tips">
+          <strong>Print it confidently</strong>
+          <ul>
+            <li>Use SVG for professional print and PNG for digital sharing.</li>
+            <li>Keep the white quiet zone around the QR.</li>
+            <li>Test the final printed code on at least two phones.</li>
+          </ul>
         </div>
       </section>
     </div>
