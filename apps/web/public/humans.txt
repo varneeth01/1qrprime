@@ -1,0 +1,11 @@
+/* TEAM */
+Product: 1QR Prime
+Website: https://1qrprime.com
+Market focus: India
+
+/* SITE */
+Language: English (India)
+Technology: React, TypeScript, Fastify, PostgreSQL
+Purpose: Permanent business QR, digital menus, restaurant ordering and customer workflows
+Canonical brand: 1QR Prime
+Pronunciation: One QR Prime
