@@ -616,7 +616,7 @@ function App() {
         <nav aria-label="Business navigation">
           {me.locations.length > 1 && <button className={section === "portfolio" ? "active nav-portfolio" : "nav-portfolio"} onClick={() => setSection("portfolio")}><LayoutDashboard size={19} />Portfolio</button>}
           {navGroups.map((group) => {
-            const items = visibleNav.filter(([key]) => group.keys.includes(key as any));
+            const items = visibleNav.filter(([key]) => (group.keys as readonly string[]).includes(key));
             if (!items.length) return null;
             return (
               <div className="nav-group" key={group.label}>
