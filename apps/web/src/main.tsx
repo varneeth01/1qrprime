@@ -1314,7 +1314,41 @@ function Profile({ l, done }: any) {
 function Catalogue({ l, done }: any) {
   const [error, setError] = useState(""),
     [edit, setEdit] = useState<Any | null>(null),
-    [image, setImage] = useState("");
+    [image, setImage] = useState(""),
+    [categoryName, setCategoryName] = useState(""),
+    [categoryEdit, setCategoryEdit] = useState<Any | null>(null),
+    [categoryBusy, setCategoryBusy] = useState(false);
+
+  async function saveCategory() {
+    const name = categoryName.trim();
+    if (!name) return;
+    setCategoryBusy(true);
+    setError("");
+    try {
+      if (categoryEdit) {
+        await api(`/locations/${l.id}/menu/categories/${categoryEdit.id}`, "PATCH", {
+          name,
+          description: categoryEdit.description || "",
+          displayOrder: categoryEdit.display_order,
+          enabled: true,
+          available: true,
+        });
+      } else {
+        await api(`/locations/${l.id}/menu/categories`, "POST", {
+          name,
+          displayOrder: (l.categories || []).length,
+        });
+      }
+      setCategoryName("");
+      setCategoryEdit(null);
+      await done();
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setCategoryBusy(false);
+    }
+  }
+
   return (
     <div className="two-columns">
       <section className="card">
@@ -1350,9 +1384,42 @@ function Catalogue({ l, done }: any) {
             </button>
           </div>
         ))}
-        <h3>Categories</h3>
-        {(l.categories || []).map((c: Any) => <div className="list-row" key={c.id}><div className="grow"><strong>{c.name}</strong><small>{c.available ? "Visible" : "Hidden"}</small></div><button className="text-button" onClick={() => { const name = prompt("Category name", c.name); if (name && name !== c.name) api(`/locations/${l.id}/menu/categories/${c.id}`, "PATCH", { name, description: c.description || "", displayOrder: c.display_order, enabled: true, available: true }).then(done).catch((e) => setError(e.message)); }}>Edit</button><button className="text-button danger" onClick={() => api(`/locations/${l.id}/menu/categories/${c.id}`, "DELETE").then(done).catch((e) => setError(e.message))}>Archive</button></div>)}
-        <button className="secondary" onClick={() => { const name = prompt("New category name"); if (name) api(`/locations/${l.id}/menu/categories`, "POST", { name, displayOrder: (l.categories || []).length }).then(done).catch((e) => setError(e.message)); }}>Add category</button>
+        <div className="menu-category-section">
+          <div className="card-heading">
+            <div><span className="eyebrow">ORGANIZE</span><h3>Categories</h3></div>
+            <Badge>{(l.categories || []).length}</Badge>
+          </div>
+          <div className="category-list">
+            {(l.categories || []).map((category: Any) => (
+              <div className="category-row" key={category.id}>
+                <div className="grow">
+                  <strong>{category.name}</strong>
+                  <small>{category.available ? "Visible to customers" : "Hidden from customers"}</small>
+                </div>
+                <button type="button" className="text-button" onClick={() => { setCategoryEdit(category); setCategoryName(category.name); }}>Edit</button>
+                <button type="button" className="text-button danger" disabled={categoryBusy} onClick={async () => {
+                  setCategoryBusy(true); setError("");
+                  try { await api(`/locations/${l.id}/menu/categories/${category.id}`, "DELETE"); await done(); }
+                  catch (e) { setError((e as Error).message); }
+                  finally { setCategoryBusy(false); }
+                }}>Archive</button>
+              </div>
+            ))}
+          </div>
+          <div className="category-composer">
+            <input
+              aria-label={categoryEdit ? "Edit category name" : "New category name"}
+              value={categoryName}
+              onChange={(e) => setCategoryName(e.target.value)}
+              placeholder={categoryEdit ? "Category name" : "Add a category"}
+              onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); void saveCategory(); } }}
+            />
+            <button type="button" className="secondary" disabled={categoryBusy || !categoryName.trim()} onClick={() => void saveCategory()}>
+              {categoryBusy ? "Saving…" : categoryEdit ? "Save" : "Add"}
+            </button>
+            {categoryEdit && <button type="button" className="text-button" onClick={() => { setCategoryEdit(null); setCategoryName(""); }}>Cancel</button>}
+          </div>
+        </div>
       </section>
       <form
         className="card"
