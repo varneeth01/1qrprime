@@ -49,7 +49,10 @@ services:
     restart: unless-stopped
     stop_grace_period: 30s
     healthcheck:
-      test: ["CMD","node","-e","fetch('http://127.0.0.1:3000/api/ready').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      # Coolify/Traefik should gate on process liveness, not database readiness.
+      # /api/ready remains available for operators, but transient DB readiness
+      # must not remove the API container from the proxy after it has started.
+      test: ["CMD","node","-e","fetch('http://127.0.0.1:3000/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
       interval: 15s
       timeout: 5s
       retries: 6
@@ -69,12 +72,6 @@ services:
       - coolify-shared
     restart: unless-stopped
     stop_grace_period: 15s
-    healthcheck:
-      test: ["CMD","wget","-q","--spider","http://127.0.0.1/healthz"]
-      interval: 15s
-      timeout: 5s
-      retries: 4
-      start_period: 10s
 
 networks:
   coolify-shared:
