@@ -76,15 +76,31 @@ services:
       target: web-runtime
       args:
         GOOGLE_SITE_VERIFICATION: ${GOOGLE_SITE_VERIFICATION:-}
-    depends_on:
-      api:
-        condition: service_healthy
+    # The static web shell must stay available even while the API/database is
+    # restarting. Nginx can proxy API calls once the API comes back; blocking
+    # web startup on API readiness turns any backend restart into a full-site
+    # Cloudflare 504.
     expose:
       - "80"
     networks:
       - default
     restart: unless-stopped
     stop_grace_period: 15s
+    healthcheck:
+      test: ["CMD-SHELL","wget -q -O - http://127.0.0.1/healthz | grep -q '^ok
+
+networks:
+  coolify-shared:
+    external: true
+    name: ${COOLIFY_PREDEFINED_NETWORK:-coolify}
+
+volumes:
+  prime-media:
+"]
+      interval: 15s
+      timeout: 5s
+      retries: 4
+      start_period: 10s
 
 networks:
   coolify-shared:
