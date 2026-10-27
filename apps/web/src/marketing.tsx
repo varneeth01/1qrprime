@@ -151,7 +151,10 @@ function Meta({ path, article }: { path: string; article?: Article }) {
     setMeta('meta[property="og:url"]', "content", canonicalUrl);
     setMeta('meta[property="og:site_name"]', "content", "1QR Prime");
     setMeta('meta[property="og:locale"]', "content", "en_IN");
+    setMeta('meta[property="og:image"]', "content", `${SITE_ORIGIN}/apple-touch-icon.png`);
+    setMeta('meta[property="og:image:alt"]', "content", "1QR Prime");
     setMeta('meta[name="twitter:card"]', "content", "summary");
+    setMeta('meta[name="twitter:image"]', "content", `${SITE_ORIGIN}/apple-touch-icon.png`);
     setMeta('meta[name="twitter:title"]', "content", meta.title);
     setMeta('meta[name="twitter:description"]', "content", meta.description);
 
@@ -196,7 +199,8 @@ function Meta({ path, article }: { path: string; article?: Article }) {
           datePublished: article.published || "2026-10-23",
           dateModified: article.updated || article.published || "2026-10-23",
           author: { "@type": "Organization", name: "1QR Prime Editorial Team", url: `${SITE_ORIGIN}/about` },
-          publisher: { "@type": "Organization", name: "1QR Prime", url: SITE_ORIGIN },
+          publisher: { "@type": "Organization", name: "1QR Prime", url: SITE_ORIGIN, logo: { "@type": "ImageObject", url: `${SITE_ORIGIN}/apple-touch-icon.png` } },
+          image: `${SITE_ORIGIN}/apple-touch-icon.png`,
           inLanguage: "en-IN",
         }
       : path === "/"
