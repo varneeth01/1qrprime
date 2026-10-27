@@ -56,6 +56,7 @@ import { MarketingWorkspace } from "./marketing-workspace";
 import "./style.css";
 import "./marketing.css";
 import "./apple-ui.css";
+import "./console-theme.css";
 const LazyMarketingRouter = React.lazy(async () => {
   const module = await import("./marketing");
   return { default: module.MarketingRouter };
@@ -219,6 +220,12 @@ function formatDate(value: unknown) {
   const parsed = new Date(/(?:Z|[+-]\d{2}:?\d{2})$/i.test(raw) ? raw : `${raw}Z`);
   return Number.isNaN(parsed.getTime()) ? "Date unavailable" : parsed.toLocaleString("en-IN");
 }
+function dayGreeting(date = new Date()) {
+  const hour = date.getHours();
+  if (hour < 12) return "Good morning";
+  if (hour < 17) return "Good afternoon";
+  return "Good evening";
+}
 function effectiveItemPricePaise(item: Any) {
   const regular = Number(item?.price_paise || 0);
   const discounted = item?.discounted_price_paise == null ? null : Number(item.discounted_price_paise);
@@ -259,8 +266,8 @@ function Skeleton({ className = "" }: { className?: string }) {
 function Brand() {
   return (
     <a className="brand" href="/">
-      <span className="brand-icon">
-        <QrCode size={25} />
+      <span className="brand-icon brand-mark" aria-hidden="true">
+        <img src="/favicon.svg" alt="" />
       </span>
       <strong>
         1QR <em>Prime</em>
@@ -734,7 +741,7 @@ function App() {
                   </div>
                   <h1>
                     {section === "overview"
-                      ? `Good evening, ${l.name}`
+                      ? `${dayGreeting()}, ${l.name}`
                       : nav.find((x) => x[0] === section)?.[1]}
                   </h1>
                   <p>{sectionCopy[section] || "Everything you need to run this business in one place."}</p>
