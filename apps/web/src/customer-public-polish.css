@@ -666,6 +666,75 @@
   border-radius: 12px;
 }
 
+.customer-branded .customer-rewards-phone {
+  display: grid;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.customer-branded .customer-rewards-phone > span {
+  color: var(--cx-muted);
+  font-size: 11px;
+  font-weight: 750;
+}
+
+.customer-branded .customer-rewards-phone > div {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 0;
+  min-height: 52px;
+  overflow: hidden;
+  background: #f7f8f5;
+  border: 1px solid var(--cx-line);
+  border-radius: 11px;
+}
+
+.customer-branded .customer-phone-prefix {
+  align-self: stretch;
+  display: grid;
+  place-items: center;
+  padding: 0 12px;
+  color: var(--cx-muted);
+  background: #eef1eb;
+  border-right: 1px solid var(--cx-line);
+  font-size: 13px;
+  font-weight: 750;
+}
+
+.customer-branded .customer-rewards-phone input {
+  width: 100%;
+  min-height: 50px;
+  padding: 0 12px;
+  color: var(--cx-ink);
+  background: transparent;
+  border: 0;
+  outline: 0;
+  font-size: 16px;
+}
+
+.customer-branded .customer-rewards-phone input::placeholder {
+  color: var(--cx-faint);
+}
+
+.customer-branded .customer-rewards-phone .secondary {
+  min-height: 40px;
+  margin-right: 6px;
+  padding: 0 12px;
+  color: var(--business-primary, #183f35);
+  background: #fff;
+  border: 1px solid color-mix(in srgb, var(--business-primary, #183f35) 16%, transparent);
+  border-radius: 9px;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.customer-branded .customer-rewards-phone > small {
+  color: var(--cx-faint);
+  font-size: 10px;
+  line-height: 1.45;
+}
+
 .customer-branded .customer-cart-panel .primary.wide {
   min-height: 56px;
   border-radius: 11px;
@@ -1159,5 +1228,18 @@
     transition-duration: .01ms !important;
     animation-duration: .01ms !important;
     animation-iteration-count: 1 !important;
+  }
+}
+
+@media (max-width: 600px) {
+  .customer-branded .customer-rewards-phone > div {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .customer-branded .customer-rewards-phone .secondary {
+    grid-column: 1 / -1;
+    width: calc(100% - 12px);
+    min-height: 44px;
+    margin: 0 6px 6px;
   }
 }
