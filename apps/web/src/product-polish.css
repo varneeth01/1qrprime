@@ -3,6 +3,25 @@
    Loaded after console-theme.css so this is the final authenticated/customer refinement layer. */
 
 .platform-shell {
+  /* Hard theme boundary: the legacy app defaults to dark. The operating canvas is light. */
+  color-scheme: light;
+  --bg:#eef1eb;
+  --surface:#ffffff;
+  --surface-2:#ffffff;
+  --surface-3:#f3f5f0;
+  --glass:rgba(255,255,255,.84);
+  --line:rgba(21,24,23,.085);
+  --line-strong:rgba(21,24,23,.15);
+  --border:rgba(21,24,23,.09);
+  --text:#151817;
+  --muted:#686e68;
+  --faint:#8d938d;
+  --accent:#bcd38b;
+  --accent-ink:#172014;
+  --danger:#a54040;
+  --success:#416d3d;
+  --warning:#8a681f;
+
   --px-ink:#151817;
   --px-black:#050505;
   --px-paper:#f4f4f0;
@@ -28,6 +47,19 @@
 
 /* --- Shell: darker edge, quieter working canvas --- */
 .platform-shell .platform-sidebar {
+  /* Sidebar remains intentionally dark and gets its own local token scheme. */
+  color-scheme: dark;
+  --text:rgba(255,255,255,.96);
+  --muted:rgba(255,255,255,.62);
+  --faint:rgba(255,255,255,.38);
+  --surface-2:#101210;
+  --surface-3:#171a17;
+  --line:rgba(255,255,255,.075);
+  --line-strong:rgba(255,255,255,.13);
+  --border:rgba(255,255,255,.09);
+  --accent:#c9d9a0;
+  --accent-ink:#12150d;
+  color:#fff;
   inset:10px auto 10px 10px;
   width:244px;
   padding:15px 10px 11px;
@@ -947,6 +979,268 @@
 .customer-branded .customer-footer {
   padding:28px 16px 130px;
   color:color-mix(in srgb,var(--business-text,#202f2c) 48%,transparent);
+}
+
+/* --- Contrast + hierarchy corrections from rendered QA --- */
+.platform-shell .workspace,
+.platform-shell .workspace main,
+.platform-shell .page-content,
+.platform-shell .marketing-workspace {
+  color:var(--text);
+}
+.platform-shell .workspace h1,
+.platform-shell .workspace h2,
+.platform-shell .workspace h3,
+.platform-shell .workspace h4,
+.platform-shell .workspace strong {
+  color:var(--text);
+}
+.platform-shell .workspace p,
+.platform-shell .workspace small,
+.platform-shell .workspace .muted {
+  color:var(--muted);
+}
+.platform-shell .workspace .eyebrow {
+  color:#63794f;
+}
+.platform-shell .platform-topbar > span {
+  color:#737873;
+}
+.platform-shell .platform-topbar > span strong {
+  color:#1b1e1c;
+}
+.platform-shell .platform-topbar svg {
+  color:#848984;
+}
+.platform-shell .platform-sidebar .brand,
+.platform-shell .platform-sidebar .brand strong,
+.platform-shell .platform-sidebar .sidebar-foot strong {
+  color:#fff;
+}
+.platform-shell .platform-sidebar .sidebar-foot small {
+  color:rgba(255,255,255,.46);
+}
+.platform-shell .platform-sidebar > select {
+  color:#f7f7f2;
+  background:#101210;
+}
+.platform-shell .platform-sidebar > select option {
+  color:#f7f7f2;
+  background:#101210;
+}
+.platform-shell .stat > span,
+.platform-shell .stat small {
+  color:#6a716a;
+}
+.platform-shell .stat strong {
+  color:#141715;
+}
+.platform-shell .business-card p,
+.platform-shell .business-card-metrics,
+.platform-shell .business-card-metrics span {
+  color:#747a74;
+}
+.platform-shell .business-card-metrics strong {
+  color:#151817;
+}
+.platform-shell .order-card > small,
+.platform-shell .order-lines span {
+  color:#6d736d;
+}
+.platform-shell .order-card .order-lines > div {
+  color:#1d211e;
+}
+.platform-shell .order-card .order-lines strong,
+.platform-shell .order-card .order-table-label {
+  color:#151817;
+}
+.platform-shell .note strong,
+.platform-shell .list-row strong,
+.platform-shell .step strong {
+  color:#1b1f1b;
+}
+.platform-shell .step small,
+.platform-shell .list-row small {
+  color:#747a74;
+}
+.platform-shell .feedback-banner strong {
+  color:inherit;
+}
+
+/* Marketing was the clearest regression: old dark surfaces remained under the light shell. */
+.platform-shell.section-marketing .marketing-workspace {
+  gap:18px;
+}
+.platform-shell.section-marketing .marketing-workspace-header {
+  padding:2px 2px 0;
+}
+.platform-shell.section-marketing .marketing-workspace-header h2 {
+  margin:5px 0 5px;
+  color:#151817;
+  font:650 25px/1.05 Manrope,sans-serif;
+  letter-spacing:-.045em;
+}
+.platform-shell.section-marketing .marketing-workspace-header p {
+  color:#6c726c;
+}
+.platform-shell.section-marketing .marketing-tabs {
+  padding:5px;
+  background:rgba(255,255,255,.68);
+  border:1px solid var(--line);
+  border-radius:12px;
+}
+.platform-shell.section-marketing .marketing-tabs > div {
+  gap:4px;
+}
+.platform-shell.section-marketing .marketing-tabs button {
+  min-height:36px;
+  padding:0 11px;
+  color:#737973;
+  border:0;
+  border-radius:8px;
+  font-size:11px;
+  font-weight:700;
+}
+.platform-shell.section-marketing .marketing-tabs button.active {
+  color:#fff;
+  background:#203f37;
+  box-shadow:0 5px 14px rgba(32,63,55,.14);
+}
+.platform-shell.section-marketing .marketing-metrics {
+  gap:10px;
+}
+.platform-shell.section-marketing .marketing-metrics > div {
+  position:relative;
+  min-height:118px;
+  display:grid;
+  align-content:end;
+  gap:5px;
+  overflow:hidden;
+  padding:17px;
+  color:#151817;
+  background:linear-gradient(160deg,#ffffff,#f4f7ef);
+  border:1px solid rgba(21,24,23,.08);
+  border-radius:15px;
+  box-shadow:0 12px 34px rgba(25,31,26,.05);
+}
+.platform-shell.section-marketing .marketing-metrics > div::before {
+  content:"";
+  position:absolute;
+  top:0;
+  left:0;
+  width:42%;
+  height:2px;
+  background:linear-gradient(90deg,#547342,#c9d9a0);
+}
+.platform-shell.section-marketing .marketing-metrics svg {
+  position:absolute;
+  top:15px;
+  right:15px;
+  color:#5e7650;
+}
+.platform-shell.section-marketing .marketing-metrics strong {
+  color:#151817;
+  font:650 28px/1 Manrope,sans-serif;
+}
+.platform-shell.section-marketing .marketing-metrics span {
+  color:#6f756f;
+}
+.platform-shell.section-marketing .marketing-two-col {
+  gap:12px;
+}
+.platform-shell.section-marketing .marketing-two-col .card {
+  min-height:180px;
+}
+.platform-shell.section-marketing .status-pill.neutral {
+  color:#626862;
+  background:#eef0ec;
+}
+.platform-shell.section-marketing .status-pill.success {
+  color:#355e39;
+  background:#e5efd0;
+}
+.platform-shell.section-marketing .marketing-empty {
+  color:#6d736d;
+}
+.platform-shell.section-marketing .marketing-empty strong {
+  color:#171a18;
+}
+.platform-shell.section-marketing .marketing-empty-icon {
+  color:#35543b;
+  background:#e8f0d4;
+}
+
+/* Analytics: restore strong metric labels and reduce the washed-out look. */
+.platform-shell.section-analytics .stats {
+  gap:10px;
+  margin-bottom:16px;
+}
+.platform-shell.section-analytics .stats .stat {
+  min-height:112px;
+  background:rgba(255,255,255,.78);
+  border:1px solid rgba(21,24,23,.065);
+  box-shadow:none;
+}
+.platform-shell.section-analytics .stats .stat > span {
+  color:#555c55;
+  font-weight:760;
+}
+.platform-shell.section-analytics .stats .stat strong {
+  color:#101311;
+}
+.platform-shell.section-analytics .operations-metrics .stat > span {
+  color:#5f665f;
+}
+.platform-shell.section-analytics .operations-metrics .stat small {
+  color:#808680;
+}
+
+/* Customer editor: controls must read like controls, preview like a device. */
+.platform-shell.section-customer .color-field {
+  color:#4f554f;
+  font-weight:650;
+}
+.platform-shell.section-customer .color-field code {
+  color:#707670;
+}
+.platform-shell.section-customer .customer-live-preview {
+  border:1px solid color-mix(in srgb,var(--business-text,#202f2c) 18%,transparent);
+  outline:10px solid #f5f6f2;
+  box-shadow:0 0 0 11px rgba(21,24,23,.08),0 26px 60px rgba(28,34,29,.12);
+}
+.platform-shell.section-customer .customer-live-preview h2 {
+  color:var(--business-text);
+}
+.platform-shell.section-customer .customer-live-preview p {
+  color:color-mix(in srgb,var(--business-text) 68%,transparent);
+}
+.platform-shell.section-customer .customer-live-preview small {
+  color:color-mix(in srgb,var(--business-text) 62%,transparent);
+}
+
+/* Overview: avoid the faded labels seen in production captures. */
+.platform-shell.section-overview .stats .stat > span {
+  color:#5d665d;
+}
+.platform-shell.section-overview .stats .stat strong {
+  color:#101311;
+}
+.platform-shell.section-overview .stats .stat small {
+  color:#7b827b;
+}
+
+/* Compact the desktop canvas so pages feel intentional instead of empty. */
+@media (min-width:1200px) {
+  .platform-shell .workspace main {
+    width:min(100%,1240px);
+    padding-top:34px;
+  }
+  .platform-shell.section-orders .orders-grid {
+    grid-template-columns:minmax(360px,520px) minmax(0,1fr);
+  }
+  .platform-shell.section-orders .order-card {
+    max-width:520px;
+  }
 }
 
 /* --- Small screens --- */
