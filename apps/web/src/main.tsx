@@ -229,9 +229,9 @@ function BusinessSwitcher({
       <button
         type="button"
         className="business-switcher-trigger"
-        aria-haspopup="listbox"
         aria-expanded={open}
-        onClick={() => setOpen((value) => !value)}
+        aria-controls="business-switcher-options"
+        onClick={() => setOpen((value) => !value)
       >
         <span>
           <small>Current business</small>
@@ -240,12 +240,11 @@ function BusinessSwitcher({
         <ChevronDown size={16} aria-hidden="true" />
       </button>
       {open && (
-        <div className="business-switcher-menu" role="listbox" aria-label="Active business">
+        <div className="business-switcher-menu" id="business-switcher-options" aria-label="Choose active business">
           {locations.length > 1 && (
             <button
               type="button"
-              role="option"
-              aria-selected={value === "all"}
+              aria-pressed={value === "all"}
               className={value === "all" ? "active" : ""}
               onClick={() => choose("all")}
             >
@@ -257,8 +256,7 @@ function BusinessSwitcher({
           {locations.map((location: Any) => (
             <button
               type="button"
-              role="option"
-              aria-selected={value === location.id}
+              aria-pressed={value === location.id}
               className={value === location.id ? "active" : ""}
               key={location.id}
               onClick={() => choose(location.id)}
