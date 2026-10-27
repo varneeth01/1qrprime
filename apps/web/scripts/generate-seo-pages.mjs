@@ -85,6 +85,9 @@ function renderRoute(path, title, description, { article = false } = {}) {
   html = replaceTag(html, /<meta\s+property=["']og:type["'][^>]*>/i, `<meta property="og:type" content="${article ? "article" : "website"}"/>`);
   html = replaceTag(html, /<meta\s+name=["']twitter:title["'][^>]*>/i, `<meta name="twitter:title" content="${escapeHtml(title)}"/>`);
   html = replaceTag(html, /<meta\s+name=["']twitter:description["'][^>]*>/i, `<meta name="twitter:description" content="${escapeHtml(description)}"/>`);
+  html = replaceTag(html, /<meta\s+property=["']og:image["'][^>]*>/i, `<meta property="og:image" content="${origin}/apple-touch-icon.png"/>`);
+  html = replaceTag(html, /<meta\s+property=["']og:image:alt["'][^>]*>/i, '<meta property="og:image:alt" content="1QR Prime"/>');
+  html = replaceTag(html, /<meta\s+name=["']twitter:image["'][^>]*>/i, `<meta name="twitter:image" content="${origin}/apple-touch-icon.png"/>`);
 
   const breadcrumb = {
     "@context": "https://schema.org",
@@ -111,7 +114,8 @@ function renderRoute(path, title, description, { article = false } = {}) {
         datePublished: published,
         dateModified: published,
         author: { "@type": "Organization", name: "1QR Prime Editorial Team", url: `${origin}/about` },
-        publisher: { "@type": "Organization", name: "1QR Prime", url: origin },
+        publisher: { "@type": "Organization", name: "1QR Prime", url: origin, logo: { "@type": "ImageObject", url: `${origin}/apple-touch-icon.png` } },
+        image: `${origin}/apple-touch-icon.png`,
         inLanguage: "en-IN",
       }
     : {
