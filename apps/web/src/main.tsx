@@ -2899,9 +2899,16 @@ function Customer({ slug, initialView = "hub" }: { slug: string; initialView?: "
     [cart, setCart] = useState<Record<string, number>>(() =>
       JSON.parse(localStorage.getItem(`cart:${slug}`) || "{}"),
     ),
-    [order, setOrder] = useState<Any | null>(() =>
-      JSON.parse(localStorage.getItem(`order:${slug}`) || "null"),
-    ),
+    [orders, setOrders] = useState<Any[]>(() => {
+      try {
+        const saved = JSON.parse(localStorage.getItem(`orders:${slug}`) || "[]");
+        if (Array.isArray(saved) && saved.length) return saved;
+        const legacy = JSON.parse(localStorage.getItem(`order:${slug}`) || "null");
+        return legacy ? [legacy] : [];
+      } catch {
+        return [];
+      }
+    }),
     [busy, setBusy] = useState(false),
     [instructions, setInstructions] = useState(""),
     [type, setType] = useState("takeaway"),
@@ -2926,13 +2933,15 @@ function Customer({ slug, initialView = "hub" }: { slug: string; initialView?: "
     [quickPayAmount, setQuickPayAmount] = useState(""),
     [paySheetOpen, setPaySheetOpen] = useState(false),
     [paymentPhoneError, setPaymentPhoneError] = useState(""),
-    [paymentIntent, setPaymentIntent] = useState<{ amount?: number; linkedOrder: boolean } | null>(null),
+    [paymentIntent, setPaymentIntent] = useState<{ amount?: number; linkedOrder: boolean; orderId?: string } | null>(null),
     [rewards, setRewards] = useState<Any[]>([]),
     [rewardBusy, setRewardBusy] = useState(false),
     [rewardError, setRewardError] = useState(""),
     [selectedRewardId, setSelectedRewardId] = useState<string | null>(null),
     [rewardQuote, setRewardQuote] = useState<Any | null>(null);
   const [reviewOpen, setReviewOpen] = useState(false), [slideValue, setSlideValue] = useState(0);
+  const order = orders[0] || null;
+  const orderPollKey = orders.map((item: Any) => `${item.id}:${item.accessToken || ""}`).join("|");
   const loaded = useRef(false);
   const tableQuery = () => window.location.search || "";
   const event = (kind: string) =>
@@ -2982,35 +2991,48 @@ function Customer({ slug, initialView = "hub" }: { slug: string; initialView?: "
     localStorage.setItem(`cart:${slug}`, JSON.stringify(cart));
   }, [cart, slug]);
   useEffect(() => {
-    if (!order) return;
+    if (!orders.length) return;
     let mounted = true;
+    const snapshot = orders.slice(0, 8);
     const poll = async () => {
       try {
-        const next = await api(
-          `/orders/${order.id}`,
-          "GET",
-          undefined,
-          order.accessToken,
+        const refreshed = await Promise.all(
+          snapshot.map(async (savedOrder: Any) => {
+            try {
+              const next = await api(
+                `/orders/${savedOrder.id}`,
+                "GET",
+                undefined,
+                savedOrder.accessToken,
+              );
+              return { ...savedOrder, ...next, accessToken: savedOrder.accessToken };
+            } catch {
+              return savedOrder;
+            }
+          }),
         );
         if (mounted) {
-          setOrder((o: Any) => ({ ...o, ...next }));
+          setOrders((current: Any[]) =>
+            current.map((savedOrder: Any) => refreshed.find((item: Any) => item.id === savedOrder.id) || savedOrder),
+          );
           setConnection("Status up to date");
         }
       } catch {
         if (mounted)
-          setConnection("Offline · reconnecting. Your order is saved.");
+          setConnection("Offline · reconnecting. Your orders are saved.");
       }
     };
-    poll();
-    const timer = setInterval(poll, 4000);
+    void poll();
+    const timer = setInterval(() => void poll(), 4000);
     return () => {
       mounted = false;
       clearInterval(timer);
     };
-  }, [order?.id, slug]);
+  }, [orderPollKey, slug]);
   useEffect(() => {
-    if (order) localStorage.setItem(`order:${slug}`, JSON.stringify(order));
-  }, [order, slug]);
+    localStorage.setItem(`orders:${slug}`, JSON.stringify(orders.slice(0, 8)));
+    localStorage.removeItem(`order:${slug}`);
+  }, [orders, slug]);
   const lines = b?.items.filter((i: Any) => cart[i.id] > 0) || [],
     total = lines.reduce(
       (sum: number, i: Any) => sum + effectiveItemPricePaise(i) * cart[i.id],
