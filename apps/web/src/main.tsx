@@ -190,6 +190,90 @@ function ChoicePicker({
     </div>
   );
 }
+function BusinessSwitcher({
+  locations,
+  value,
+  onChange,
+}: {
+  locations: Any[];
+  value: string;
+  onChange: (value: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const root = useRef<HTMLDivElement | null>(null);
+  const current = value === "all" ? null : locations.find((location: Any) => location.id === value);
+
+  useEffect(() => {
+    if (!open) return;
+    const closeOnPointer = (event: PointerEvent) => {
+      if (!root.current?.contains(event.target as Node)) setOpen(false);
+    };
+    const closeOnKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setOpen(false);
+    };
+    window.addEventListener("pointerdown", closeOnPointer);
+    window.addEventListener("keydown", closeOnKey);
+    return () => {
+      window.removeEventListener("pointerdown", closeOnPointer);
+      window.removeEventListener("keydown", closeOnKey);
+    };
+  }, [open]);
+
+  function choose(next: string) {
+    onChange(next);
+    setOpen(false);
+  }
+
+  return (
+    <div className="business-switcher" ref={root}>
+      <button
+        type="button"
+        className="business-switcher-trigger"
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        onClick={() => setOpen((value) => !value)}
+      >
+        <span>
+          <small>Current business</small>
+          <strong>{current?.name || "All businesses"}</strong>
+        </span>
+        <ChevronDown size={16} aria-hidden="true" />
+      </button>
+      {open && (
+        <div className="business-switcher-menu" role="listbox" aria-label="Active business">
+          {locations.length > 1 && (
+            <button
+              type="button"
+              role="option"
+              aria-selected={value === "all"}
+              className={value === "all" ? "active" : ""}
+              onClick={() => choose("all")}
+            >
+              <span className="business-switcher-mark"><LayoutDashboard size={15} /></span>
+              <span><strong>All businesses</strong><small>Portfolio overview</small></span>
+              {value === "all" && <Check size={15} />}
+            </button>
+          )}
+          {locations.map((location: Any) => (
+            <button
+              type="button"
+              role="option"
+              aria-selected={value === location.id}
+              className={value === location.id ? "active" : ""}
+              key={location.id}
+              onClick={() => choose(location.id)}
+            >
+              <span className="business-switcher-mark">{String(location.name || "?").slice(0, 1).toUpperCase()}</span>
+              <span><strong>{location.name}</strong><small>{label(location.category)} · {location.published ? "Live" : "Draft"}</small></span>
+              {value === location.id && <Check size={15} />}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function MediaUploader({ locationId, value, onChange, title }: { locationId: string; value?: string | null; onChange: (url: string | null) => void; title: string }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -612,24 +696,16 @@ function App() {
       <aside className="sidebar platform-sidebar">
         <Brand />
         <div className="workspace-label">BUSINESS</div>
-        <select
-          aria-label="Active business"
+        <BusinessSwitcher
+          locations={me.locations}
           value={lid || "all"}
-          onChange={(e) => {
-            const next = e.target.value;
+          onChange={(next) => {
             setLid(next === "all" ? "" : next);
             if (next === "all") setSection("portfolio");
             else if (section === "portfolio" || locationSetupInShell) setSection("overview");
             setError("");
           }}
-        >
-          {me.locations.length > 1 && <option value="all">All businesses</option>}
-          {me.locations.map((x: Any) => (
-            <option key={x.id} value={x.id}>
-              {x.name}
-            </option>
-          ))}
-        </select>
+        />
         <nav aria-label="Business navigation">
           {me.locations.length > 1 && <button className={section === "portfolio" ? "active nav-portfolio" : "nav-portfolio"} onClick={() => setSection("portfolio")}><LayoutDashboard size={19} />Portfolio</button>}
           {navGroups.map((group) => {
