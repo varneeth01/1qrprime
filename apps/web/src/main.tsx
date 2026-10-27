@@ -60,6 +60,7 @@ import "./console-theme.css";
 import "./product-polish.css";
 import "./customer-experience.css";
 import "./merchant-ui-polish.css";
+import "./customer-public-polish.css";
 const LazyMarketingRouter = React.lazy(async () => {
   const module = await import("./marketing");
   return { default: module.MarketingRouter };
@@ -2968,6 +2969,115 @@ function BillView({ bill, onClose }: { bill: Any; onClose: () => void }) {
   return <div className="modal-backdrop" role="dialog" aria-modal="true" aria-label="Bill"><div className="card bill-view-modal"><div className="card-heading"><div><Badge tone="green">BILL</Badge><h2>{bill.tableName || "Order"}</h2><p className="muted">Order #{bill.orderNumber}</p></div><button className="text-button" onClick={onClose}>Close</button></div><div className="bill-lines">{(bill.items || []).map((item: Any) => <div className="list-row" key={item.itemId || item.name}><span>{item.quantity} × {item.name}</span><strong>{money(item.lineTotalPaise || item.pricePaise * item.quantity)}</strong></div>)}</div><div className="list-row"><span>Subtotal</span><strong>{money(bill.subtotalPaise)}</strong></div>{bill.discountPaise > 0 && <div className="list-row"><span>Discount</span><strong>-{money(bill.discountPaise)}</strong></div>}{bill.taxPaise > 0 && <div className="list-row"><span>Tax</span><strong>{money(bill.taxPaise)}</strong></div>}{bill.packagingFeePaise > 0 && <div className="list-row"><span>Packaging</span><strong>{money(bill.packagingFeePaise)}</strong></div>}<div className="list-row"><strong>Amount paid</strong><strong>{money(bill.originalPaidPaise ?? bill.totalPaise)}</strong></div>{!!refunds.length && <section><h3>Refunds</h3>{refunds.map((refund: Any) => <div className="list-row" key={refund.id}><span>{refund.item_name_snapshot || "Refund"}<small>{humanRefundState(refund.status)}</small></span><strong>-{money(refund.amount_paise)}</strong></div>)}<div className="list-row"><strong>Net paid</strong><strong>{money(bill.netPaidPaise ?? bill.totalPaise)}</strong></div></section>}</div></div>;
 }
 
+function upsertCustomerMeta(selector: string, attribute: string, value: string) {
+  let element = document.querySelector(selector) as HTMLMetaElement | null;
+  if (!element) {
+    element = document.createElement("meta");
+    document.head.appendChild(element);
+  }
+  element.setAttribute(attribute, value);
+}
+
+function applyCustomerSeo(business: Any, slug: string) {
+  const production = /(^|\.)1qrprime\.com$/i.test(window.location.hostname);
+  const canonicalUrl = `https://1qrprime.com/q/${encodeURIComponent(slug)}`;
+  const profile = business?.profile || {};
+  const appearance = profile.appearance || {};
+  const hasMenu = !!business?.capabilities?.menu;
+  const category = String(business?.category || "business");
+  const categoryLabel = label(category);
+  const title = hasMenu
+    ? `${business.name} Menu & Ordering | 1QR Prime`
+    : `${business.name} | 1QR Prime`;
+  const fallbackDescription = hasMenu
+    ? `View ${business.name}'s live ${categoryLabel.toLowerCase()} menu, current availability and customer actions.`
+    : `View ${business.name}'s current business information and customer actions.`;
+  const description = String(profile.description || fallbackDescription).trim().slice(0, 180);
+  const imageSource = appearance.coverUrl || appearance.logoUrl || "/apple-touch-icon.png";
+  let imageUrl = "https://1qrprime.com/apple-touch-icon.png";
+  try {
+    imageUrl = new URL(imageSource, canonicalUrl).toString();
+  } catch {}
+
+  document.title = title;
+  upsertCustomerMeta('meta[name="description"]', "content", description);
+  upsertCustomerMeta(
+    'meta[name="robots"]',
+    "content",
+    production
+      ? "index,follow,max-image-preview:large,max-snippet:-1,max-video-preview:-1"
+      : "noindex,nofollow",
+  );
+  upsertCustomerMeta('meta[property="og:title"]', "content", title);
+  upsertCustomerMeta('meta[property="og:description"]', "content", description);
+  upsertCustomerMeta('meta[property="og:type"]', "content", "website");
+  upsertCustomerMeta('meta[property="og:url"]', "content", canonicalUrl);
+  upsertCustomerMeta('meta[property="og:site_name"]', "content", "1QR Prime");
+  upsertCustomerMeta('meta[property="og:locale"]', "content", "en_IN");
+  upsertCustomerMeta('meta[property="og:image"]', "content", imageUrl);
+  upsertCustomerMeta('meta[property="og:image:alt"]', "content", `${business.name} on 1QR Prime`);
+  upsertCustomerMeta('meta[name="twitter:card"]', "content", "summary_large_image");
+  upsertCustomerMeta('meta[name="twitter:title"]', "content", title);
+  upsertCustomerMeta('meta[name="twitter:description"]', "content", description);
+  upsertCustomerMeta('meta[name="twitter:image"]', "content", imageUrl);
+
+  const theme = appearance.buttonColor || appearance.primaryColor;
+  if (theme) upsertCustomerMeta('meta[name="theme-color"]', "content", theme);
+
+  let canonical = document.querySelector('link[rel="canonical"]') as HTMLLinkElement | null;
+  if (!canonical) {
+    canonical = document.createElement("link");
+    canonical.rel = "canonical";
+    document.head.appendChild(canonical);
+  }
+  canonical.href = canonicalUrl;
+
+  const schemaId = "customer-business-schema";
+  document.getElementById(schemaId)?.remove();
+  const schema = document.createElement("script");
+  schema.id = schemaId;
+  schema.type = "application/ld+json";
+  const schemaType =
+    category === "restaurant" || category === "cloud_kitchen"
+      ? "Restaurant"
+      : category === "cafe"
+        ? "CafeOrCoffeeShop"
+        : category === "hotel"
+          ? "Hotel"
+          : "LocalBusiness";
+  const sameAs = [
+    profile.websiteUrl,
+    profile.instagramUrl,
+    profile.facebookUrl,
+    profile.youtubeUrl,
+    profile.xUrl,
+    profile.linkedinUrl,
+  ].filter(Boolean);
+  schema.textContent = JSON.stringify({
+    "@context": "https://schema.org",
+    "@type": schemaType,
+    "@id": `${canonicalUrl}#business`,
+    name: business.name,
+    url: canonicalUrl,
+    description,
+    image: imageUrl,
+    ...(appearance.logoUrl ? { logo: new URL(appearance.logoUrl, canonicalUrl).toString() } : {}),
+    ...(profile.phone ? { telephone: profile.phone } : {}),
+    ...(profile.address
+      ? {
+          address: {
+            "@type": "PostalAddress",
+            streetAddress: profile.address,
+            addressCountry: "IN",
+          },
+        }
+      : {}),
+    ...(hasMenu ? { hasMenu: `${canonicalUrl}/menu` } : {}),
+    ...(sameAs.length ? { sameAs } : {}),
+  });
+  document.head.appendChild(schema);
+}
+
 function Customer({ slug, initialView = "hub" }: { slug: string; initialView?: "hub" | "menu" | "pay" }) {
   const [b, setB] = useState<Any | null>(null),
     [view, setView] = useState<"hub" | "menu" | "pay">(initialView),
@@ -3050,7 +3160,7 @@ function Customer({ slug, initialView = "hub" }: { slug: string; initialView?: "
         setB(x);
         setType(x.profile.orderTypes[0]);
         setMethod(x.profile.payAtCounter ? "counter" : "upi");
-        document.title = `${x.name} · 1QR Prime`;
+        applyCustomerSeo(x, slug);
         if (!loaded.current) {
           loaded.current = true;
           event("page_view");
