@@ -58,6 +58,7 @@ import "./marketing.css";
 import "./apple-ui.css";
 import "./console-theme.css";
 import "./product-polish.css";
+import "./customer-experience.css";
 const LazyMarketingRouter = React.lazy(async () => {
   const module = await import("./marketing");
   return { default: module.MarketingRouter };
@@ -2939,10 +2940,12 @@ function Customer({ slug, initialView = "hub" }: { slug: string; initialView?: "
     [rewardError, setRewardError] = useState(""),
     [selectedRewardId, setSelectedRewardId] = useState<string | null>(null),
     [rewardQuote, setRewardQuote] = useState<Any | null>(null);
-  const [reviewOpen, setReviewOpen] = useState(false), [slideValue, setSlideValue] = useState(0);
+  const [reviewOpen, setReviewOpen] = useState(false), [slideValue, setSlideValue] = useState(0), [cartOpen, setCartOpen] = useState(false);
   const order = orders[0] || null;
+  const cartSheetVisible = cartOpen || pending;
   const orderPollKey = orders.map((item: Any) => `${item.id}:${item.accessToken || ""}`).join("|");
   const loaded = useRef(false);
+  const cartSheetRef = useRef<HTMLElement | null>(null);
   const tableQuery = () => window.location.search || "";
   const event = (kind: string) =>
     api(`/public/${slug}/events`, "POST", { kind }).catch(() => {});
@@ -3033,6 +3036,21 @@ function Customer({ slug, initialView = "hub" }: { slug: string; initialView?: "
     localStorage.setItem(`orders:${slug}`, JSON.stringify(orders.slice(0, 8)));
     localStorage.removeItem(`order:${slug}`);
   }, [orders, slug]);
+  useEffect(() => {
+    if (!cartSheetVisible) return;
+    const previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape" && !pending) setCartOpen(false);
+    };
+    document.documentElement.classList.add("customer-cart-open");
+    window.addEventListener("keydown", closeOnEscape);
+    window.requestAnimationFrame(() => cartSheetRef.current?.focus());
+    return () => {
+      document.documentElement.classList.remove("customer-cart-open");
+      window.removeEventListener("keydown", closeOnEscape);
+      previousFocus?.focus();
+    };
+  }, [cartSheetVisible, pending]);
   const lines = b?.items.filter((i: Any) => cart[i.id] > 0) || [],
     total = lines.reduce(
       (sum: number, i: Any) => sum + effectiveItemPricePaise(i) * cart[i.id],
@@ -3096,6 +3114,7 @@ function Customer({ slug, initialView = "hub" }: { slug: string; initialView?: "
       setInstructions("");
       setSelectedRewardId(null);
       setRewardQuote(null);
+      setCartOpen(false);
       localStorage.removeItem(`pending:${slug}`);
       setPending(false);
     } catch (e) {
@@ -3107,7 +3126,7 @@ function Customer({ slug, initialView = "hub" }: { slug: string; initialView?: "
       setBusy(false);
     }
   }
-  function submit() { setReviewOpen(true); }
+  function submit() { setCartOpen(false); setReviewOpen(true); }
   async function loadRewards() {
     const normalized = normalizeCustomerPhone(customerPhone);
     if (!normalized) { setRewardError("Enter a valid mobile number to check rewards."); return; }
@@ -3228,12 +3247,19 @@ function Customer({ slug, initialView = "hub" }: { slug: string; initialView?: "
       </div>
     );
   return (
-    <div className="customer-wrap customer-branded" style={{ "--business-bg": appearance.backgroundColor, "--business-text": appearance.textColor, "--business-primary": appearance.primaryColor, "--business-secondary": appearance.secondaryColor, "--business-button": appearance.buttonColor, "--business-button-text": appearance.buttonTextColor } as any}>
+    <div className={`customer-wrap customer-branded customer-view-${view}`} style={{ "--business-bg": appearance.backgroundColor, "--business-text": appearance.textColor, "--business-primary": appearance.primaryColor, "--business-secondary": appearance.secondaryColor, "--business-button": appearance.buttonColor, "--business-button-text": appearance.buttonTextColor } as any}>
       <header className="customer-top">
-        <div className="customer-brand-link" aria-label={`Back to ${b.name}`}><Brand /></div>
+        {view === "hub" ? (
+          <div className="customer-brand-link"><Brand /></div>
+        ) : (
+          <button className="customer-top-back" type="button" onClick={() => navigate("hub")} aria-label={`Back to ${b.name}`}>
+            <ArrowLeft size={18} aria-hidden="true" />
+            <span><small>Back</small><strong>{b.name}</strong></span>
+          </button>
+        )}
         <div className="customer-top-actions">
           {view === "menu" && <button className="customer-top-button" aria-label="Search menu" onClick={() => document.querySelector<HTMLInputElement>(".customer-menu-search")?.focus()}><Search size={18} /></button>}
-          {lines.length > 0 && <button className="customer-top-button customer-top-cart" aria-label={`${lines.length} items in cart`} onClick={() => document.querySelector<HTMLElement>(".customer-cart-panel")?.scrollIntoView({ behavior: "smooth", block: "start" })}><ShoppingBag size={18} /><span>{lines.reduce((sum: number, i: Any) => sum + cart[i.id], 0)}</span></button>}
+          {lines.length > 0 && <button className="customer-top-button customer-top-cart" aria-label={`${lines.reduce((sum: number, i: Any) => sum + cart[i.id], 0)} items in cart`} aria-haspopup="dialog" aria-expanded={cartSheetVisible} onClick={() => setCartOpen(true)}><ShoppingBag size={18} /><span>{lines.reduce((sum: number, i: Any) => sum + cart[i.id], 0)}</span></button>}
         </div>
       </header>
       <div className="customer-hero">
@@ -3283,7 +3309,6 @@ function Customer({ slug, initialView = "hub" }: { slug: string; initialView?: "
           {!!b.challenges?.length && <section className="customer-feature-strip" aria-label="Customer challenges"><div className="customer-feature-heading"><Badge tone="green">CHALLENGES</Badge><span>Come back for more</span></div><div className="customer-feature-grid">{b.challenges.slice(0, 3).map((challenge: Any) => <article className="customer-feature-card challenge" key={challenge.id}><strong>{challenge.customer_title}</strong><p>{challenge.description || `Complete ${challenge.target} to unlock the reward.`}</p><small>Ends {new Date(challenge.endsAt).toLocaleDateString()}</small></article>)}</div></section>}
         </>
       )}
-      {view !== "hub" && <button className="hub-back" onClick={() => navigate("hub")}><ArrowLeft size={17} /> {b.name}</button>}
       {view === "pay" && b.paymentAvailable && (
         <section className="card quick-pay">
           <Badge>QUICK PAY</Badge><h2>Pay {b.name}</h2><p>Enter an amount, then choose your preferred UPI app.</p>
@@ -3292,7 +3317,7 @@ function Customer({ slug, initialView = "hub" }: { slug: string; initialView?: "
           <small>Opening a payment app does not confirm payment. Check the payee and amount.</small>
         </section>
       )}
-      {view === "menu" && menuBusiness && !b.profile.manualClosed && (
+      {view === "menu" && menuBusiness && (
         <div className="customer-menu-tools">
           <div className="customer-menu-search-wrap"><Search size={18} /><input className="customer-menu-search" aria-label="Search menu" placeholder="Search the menu" value={search} onChange={(e) => setSearch(e.target.value)} /></div>
           <div className="customer-category-row" role="tablist" aria-label="Menu categories">
@@ -3304,10 +3329,16 @@ function Customer({ slug, initialView = "hub" }: { slug: string; initialView?: "
           </div>
         </div>
       )}
+      {view === "menu" && b.profile.manualClosed && (
+        <div className="customer-menu-closed" role="status">
+          <Clock size={17} aria-hidden="true" />
+          <span><strong>Ordering is paused right now</strong><small>You can still browse the menu and come back when ordering reopens.</small></span>
+        </div>
+      )}
       {view === "menu" && !!b.promotions?.length && <section className="customer-menu-featured" aria-label="Featured offers"><div className="customer-feature-heading"><Badge tone="amber">SPECIAL OFFERS</Badge><span>Live on this menu</span></div>{b.promotions.slice(0, 3).map((promotion: Any) => <button type="button" className="customer-menu-offer" key={promotion.id} onClick={() => openPromotion(promotion.id)}><div><strong>{promotion.title}</strong><small>{promotion.description}</small></div><span>See offer <ArrowUpRight size={14} /></span></button>)}</section>}
       {view === "menu" && !!b.challenges?.length && <section className="customer-menu-featured" aria-label="Challenges"><div className="customer-feature-heading"><Badge tone="green">CHALLENGES</Badge><span>Make your next visit count</span></div>{b.challenges.slice(0, 3).map((challenge: Any) => <div className="customer-menu-offer challenge" key={challenge.id}><div><strong>{challenge.customer_title}</strong><small>{challenge.description}</small></div><span>{challenge.target} goal</span></div>)}</section>}
       {payment && (
-        <section className="card">
+        <section className="card customer-payment-status">
           <h2>Continue to your UPI app</h2>
           <p>
             Pay {payment.snapshot.payee} · {payment.snapshot.vpa}
@@ -3425,12 +3456,12 @@ function Customer({ slug, initialView = "hub" }: { slug: string; initialView?: "
               <div className="section-title">
                 <h2>
                   {b.category === "restaurant"
-                    ? "Fresh from our menu"
+                    ? "Menu"
                     : b.category === "retail"
                       ? "Explore our collection"
                       : "Our services"}
                 </h2>
-                <span>{b.items.length} offerings</span>
+                <span>{b.items.length} {b.items.length === 1 ? "item" : "items"}</span>
               </div>
               {[...new Set<string>(b.items.map((i: Any) => i.section))].filter((section) => menuSection === "all" || section === menuSection).map(
                 (section) => (
@@ -3455,23 +3486,35 @@ function Customer({ slug, initialView = "hub" }: { slug: string; initialView?: "
                             {!i.available && <Badge>Unavailable</Badge>}
                           </div>
                           {b.profile.orderEnabled && (
-                            <div className="quantity">
+                            cart[i.id] > 0 ? (
+                              <div className="quantity customer-quantity">
+                                <button
+                                  aria-label={`Remove one ${i.name}`}
+                                  disabled={pending}
+                                  onClick={() => change(i, -1)}
+                                >
+                                  −
+                                </button>
+                                <span aria-live="polite">{cart[i.id]}</span>
+                                <button
+                                  aria-label={`Add one ${i.name}`}
+                                  disabled={!i.available || pending || b.profile.manualClosed}
+                                  onClick={() => openItem(i)}
+                                >
+                                  +
+                                </button>
+                              </div>
+                            ) : (
                               <button
-                                aria-label={`Remove ${i.name}`}
-                                disabled={!cart[i.id] || pending}
-                                onClick={() => change(i, -1)}
-                              >
-                                −
-                              </button>
-                              <span aria-live="polite">{cart[i.id] || 0}</span>
-                              <button
-                                aria-label={`Add ${i.name}`}
-                                disabled={!i.available || pending}
+                                type="button"
+                                className="customer-add-button"
+                                disabled={!i.available || pending || b.profile.manualClosed}
                                 onClick={() => openItem(i)}
                               >
-                                +
+                                <Plus size={15} aria-hidden="true" />
+                                {i.variants?.length || i.modifierGroups?.length ? "Choose" : "Add"}
                               </button>
-                            </div>
+                            )
                           )}
                         </article>
                       ))}
@@ -3480,18 +3523,30 @@ function Customer({ slug, initialView = "hub" }: { slug: string; initialView?: "
               )}
             </section>
           )}
-      {view === "menu" && lines.length > 0 && !pending && <button className="customer-cart-bar" onClick={() => document.querySelector<HTMLElement>(".customer-cart-panel")?.scrollIntoView({ behavior: "smooth", block: "start" })}><span className="cart-count">{lines.reduce((sum: number, i: Any) => sum + cart[i.id], 0)}</span><span><strong>{lines.length === 1 ? "1 item" : `${lines.length} items`}</strong><small>Ready to review</small></span><b>{money(total)}</b><ArrowUpRight size={18} /></button>}
-      {view === "menu" && (lines.length > 0 || pending) && (
-            <section className="card cart customer-cart-panel">
-              <h2>Your order</h2>
-              {lines.map((i: Any) => (
-                <div className="list-row" key={i.id}>
-                  <span>
-                    {cart[i.id]} × {i.name}
-                  </span>
-                  <strong>{money(effectiveItemPricePaise(i) * cart[i.id])}</strong>
-                </div>
-              ))}
+      {view === "menu" && lines.length > 0 && !pending && <button className="customer-cart-bar" aria-haspopup="dialog" aria-expanded={cartSheetVisible} onClick={() => setCartOpen(true)}><span className="cart-count">{lines.reduce((sum: number, i: Any) => sum + cart[i.id], 0)}</span><span><strong>View cart</strong><small>{lines.reduce((sum: number, i: Any) => sum + cart[i.id], 0)} {lines.reduce((sum: number, i: Any) => sum + cart[i.id], 0) === 1 ? "item" : "items"}</small></span><b>{money(total)}</b><ChevronRight size={18} /></button>}
+      {view === "menu" && (lines.length > 0 || pending) && cartSheetVisible && (
+            <div className="customer-cart-sheet-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget && !pending) setCartOpen(false); }}>
+            <section ref={cartSheetRef} tabIndex={-1} className="card cart customer-cart-panel" role="dialog" aria-modal="true" aria-labelledby="customer-cart-title">
+              <div className="customer-cart-sheet-head">
+                <div><Badge>YOUR CART</Badge><h2 id="customer-cart-title">Review your order</h2><p>Make changes before sending it to {b.name}.</p></div>
+                {!pending && <button type="button" className="customer-sheet-close" aria-label="Close cart" onClick={() => setCartOpen(false)}>×</button>}
+              </div>
+              <div className="customer-cart-lines">
+                {lines.map((i: Any) => (
+                  <div className="customer-cart-line" key={i.id}>
+                    <div>
+                      <strong>{i.name}</strong>
+                      <small>{money(effectiveItemPricePaise(i))} each</small>
+                    </div>
+                    <div className="quantity customer-quantity" aria-label={`Quantity for ${i.name}`}>
+                      <button type="button" aria-label={`Remove one ${i.name}`} disabled={pending} onClick={() => change(i, -1)}>−</button>
+                      <span aria-live="polite">{cart[i.id]}</span>
+                      <button type="button" aria-label={`Add one ${i.name}`} disabled={pending || b.profile.manualClosed} onClick={() => change(i, 1)}>+</button>
+                    </div>
+                    <strong className="customer-cart-line-total">{money(effectiveItemPricePaise(i) * cart[i.id])}</strong>
+                  </div>
+                ))}
+              </div>
               <Field
                 title="Special instructions (optional)"
                 value={instructions}
@@ -3561,6 +3616,7 @@ function Customer({ slug, initialView = "hub" }: { slug: string; initialView?: "
                 </button>
               )}
             </section>
+            </div>
           )}
 {configItem && (
         <div className="modal-backdrop" role="dialog" aria-modal="true" aria-label={`Configure ${configItem.name}`}>
