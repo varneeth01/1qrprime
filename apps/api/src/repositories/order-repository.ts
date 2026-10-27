@@ -47,7 +47,7 @@ export class OrderRepository {
     const tableName = order.table_name_snapshot || (order.table_id
       ? (await executor.get<any>("SELECT name FROM restaurant_tables WHERE id=?", [order.table_id]))?.name || null
       : null);
-    const orderItems = await executor.all<any>("SELECT id order_item_id,menu_item_id,item_name_snapshot,quantity,cancelled_quantity,placed_at,cancellable_until,cancelled_at,cancelled_by,cancellation_reason FROM order_items WHERE order_id=? ORDER BY placed_at ASC,id ASC", [order.id]);
+    const orderItems = await executor.all<any>("SELECT id order_item_id,menu_item_id,item_name_snapshot,unit_price_snapshot,quantity,cancelled_quantity,placed_at,cancellable_until,cancelled_at,cancelled_by,cancellation_reason FROM order_items WHERE order_id=? ORDER BY placed_at ASC,id ASC", [order.id]);
     return {
       ...order,
       amount_paise: Number(order.amount_paise),
