@@ -584,7 +584,9 @@ function App() {
   const needsOnboarding = productState === "AUTHENTICATED_ACCOUNT_SETUP";
   const paymentRequired = productState === "PRIME_PAYMENT_REQUIRED";
   const salesPending = productState === "SALES_CONTACT_PENDING";
-  const visibleNav = nav.filter(
+  const locationSetupBlocked = needsOnboarding || paymentRequired || salesPending;
+  const locationSetupInShell = me.locations.length > 1 && locationSetupBlocked;
+  const visibleNav = (locationSetupInShell ? [] : nav).filter(
     ([key]) =>
       !(
         l?.role === "staff" &&
@@ -593,7 +595,7 @@ function App() {
       !(key === "service" && l?.role === "staff" && l?.operational_role !== "service") &&
       !(l?.role === "staff" && key === "marketing"),
   );
-  if (!canRenderMerchantNavigation(productState) && !me.adminRole)
+  if (!canRenderMerchantNavigation(productState) && !me.adminRole && !locationSetupInShell)
     return (
       <div className="auth auth-v2">
         {verificationRequired ? <VerificationRequired email={me.email} refresh={refresh} onSwitchAccount={async () => { await api("/auth/logout", "POST"); await refresh(); window.location.replace("/login"); }} /> : needsOnboarding ? <div className="setup-shell"><NewLocation me={me} initial={l} done={refresh} /></div> : paymentRequired ? <div className="setup-shell"><NewLocation me={me} initial={l} forcePayment done={refresh} /></div> : salesEditing ? <div className="setup-shell"><NewLocation me={me} initial={l} startAt={0} done={async () => { setSalesEditing(false); await refresh(); }} onSalesSubmitted={async () => { setSalesEditing(false); await refresh(); }} /></div> : <SalesPending name={l?.name} category={l?.category} email={me.email} phone={l?.profile?.phone} city={l?.profile?.city || l?.profile?.address} onEdit={() => setSalesEditing(true)} onSignOut={async () => { await api("/auth/logout", "POST"); window.location.replace("/login"); }} />}
@@ -611,6 +613,8 @@ function App() {
             const next = e.target.value;
             setLid(next === "all" ? "" : next);
             if (next === "all") setSection("portfolio");
+            else if (section === "portfolio" || locationSetupInShell) setSection("overview");
+            setError("");
           }}
         >
           {me.locations.length > 1 && <option value="all">All businesses</option>}
@@ -672,7 +676,7 @@ function App() {
           <span>
             {tenant?.name || "Business"} <ChevronRight size={14} />{" "}
             <strong>
-              {nav.find((x) => x[0] === section)?.[1] || "Support"}
+              {locationSetupInShell ? "Business setup" : nav.find((x) => x[0] === section)?.[1] || "Support"}
             </strong>
           </span>
           <div className="topbar-context">
@@ -684,12 +688,14 @@ function App() {
                 const next = e.target.value;
                 setLid(next === "all" ? "" : next);
                 if (next === "all") setSection("portfolio");
+                else if (section === "portfolio" || locationSetupInShell) setSection("overview");
+                setError("");
               }}
             >
               {me.locations.length > 1 && <option value="all">All businesses</option>}
               {me.locations.map((x: Any) => <option key={x.id} value={x.id}>{x.name}</option>)}
             </select>
-            <select
+            {!locationSetupInShell && <select
               className="mobile-section-select"
               aria-label="Active section"
               value={section}
@@ -702,7 +708,7 @@ function App() {
               {visibleNav.map(([key, title]) => <option key={key} value={key}>{title}</option>)}
               {l?.role === "owner" && <option value="new">Add business</option>}
               {me.adminRole && <option value="admin">Support console</option>}
-            </select>
+            </select>}
             <span className="topbar-business-status">{tenant?.name || "Business"}</span>
             {l?.published && <Badge tone="green">Live</Badge>}
           </div>
@@ -712,21 +718,50 @@ function App() {
           {section === "admin" ? (
             <Admin />
           ) : section === "new" ? (
-            <NewLocation me={me} done={async () => { await refresh(); setSection("overview"); }} />
+            <NewLocation me={me} onExit={me.locations.length ? () => { setSection("portfolio"); setLid(""); setError(""); } : undefined} done={async () => { await refresh(); setSection("overview"); }} />
           ) : section === "portfolio" || (!lid && me.locations.length > 1) ? (
-            <Portfolio me={me} go={(next: string, locationId?: string) => { if (locationId) setLid(locationId); setSection(next); }} />
+            <Portfolio me={me} go={(next: string, locationId?: string) => { if (locationId) setLid(locationId); setSection(next); setError(""); }} />
           ) : !l ? (
             <NewLocation
               me={me}
+              onExit={me.locations.length ? () => { setSection("portfolio"); setLid(""); setError(""); } : undefined}
               done={async () => {
                 await refresh();
                 setSection("overview");
               }}
             />
+          ) : salesPending ? (
+            salesEditing ? (
+              <NewLocation
+                me={me}
+                initial={l}
+                startAt={0}
+                onExit={() => { setSalesEditing(false); setSection("portfolio"); setLid(""); setError(""); }}
+                done={async () => { setSalesEditing(false); await refresh(); setSection("overview"); }}
+                onSalesSubmitted={async () => { setSalesEditing(false); await refresh(); }}
+              />
+            ) : (
+              <div className="setup-shell-inline">
+                <button type="button" className="text-button setup-shell-back" onClick={() => { setSection("portfolio"); setLid(""); setError(""); }}><ArrowLeft size={15} /> Back to businesses</button>
+                <SalesPending name={l?.name} category={l?.category} email={me.email} phone={l?.profile?.phone} city={l?.profile?.city || l?.profile?.address} onEdit={() => setSalesEditing(true)} onSignOut={async () => { await api("/auth/logout", "POST"); window.location.replace("/login"); }} />
+              </div>
+            )
           ) : needsOnboarding ? (
             <NewLocation
               me={me}
               initial={l}
+              onExit={() => { setSection("portfolio"); setLid(""); setError(""); }}
+              done={async () => {
+                await refresh();
+                setSection("overview");
+              }}
+            />
+          ) : paymentRequired ? (
+            <NewLocation
+              me={me}
+              initial={l}
+              forcePayment
+              onExit={() => { setSection("portfolio"); setLid(""); setError(""); }}
               done={async () => {
                 await refresh();
                 setSection("overview");
@@ -951,7 +986,7 @@ function Stat({ title, value, note }: any) {
     </div>
   );
 }
-function NewLocation({ me, done, initial, forcePayment = false, startAt, onSalesSubmitted }: any) {
+function NewLocation({ me, done, initial, forcePayment = false, startAt, onSalesSubmitted, onExit }: any) {
   const persistedStep = startAt ?? initial?.onboarding?.step ?? 0;
   // Older drafts used step 4 for plan selection and step 5 for the preview.
   // Keep those drafts resumable after the menu step was removed from onboarding.
@@ -1099,7 +1134,13 @@ function NewLocation({ me, done, initial, forcePayment = false, startAt, onSales
   if (step >= 6 && draft) return <section className="card onboarding-success narrow"><div className="success-mark"><Check size={22} /></div><div className="auth-kicker">SETUP COMPLETE</div><h1>Your business is live</h1><p>Print or share this QR anywhere. Your menu, payment details and business information can change later without replacing it.</p><img className="qr-image" src={`/api/locations/${draft.id}/qr?format=svg&kind=page`} alt={`${name} permanent QR`} /><p className="public-link">{location.origin}/q/{draft.publicId}</p><div className="button-row"><a className="button primary" href={`/api/locations/${draft.id}/qr?format=png&kind=page`} download>Download QR</a><a className="button secondary" href={`/q/${draft.publicId}`} target="_blank" rel="noreferrer">View Customer Page</a><button className="secondary" onClick={done}>Go to Dashboard</button></div></section>;
   const steps = ["Business basics", "Details", "Configure", "Plan", "Activate"];
   return <section className="card narrow onboarding-card">
-    <div className="setup-heading"><div><div className="auth-kicker">SET UP YOUR BUSINESS</div><span className="setup-business">{name || "New business"}</span></div><span className="setup-count">{String(Math.min(step + 1, steps.length)).padStart(2, "0")} / {String(steps.length).padStart(2, "0")}</span></div>
+    <div className="setup-heading">
+      <div><div className="auth-kicker">SET UP YOUR BUSINESS</div><span className="setup-business">{name || "New business"}</span></div>
+      <div className="setup-heading-actions">
+        {onExit && <button type="button" className="text-button setup-exit" onClick={onExit}><ArrowLeft size={15} /> Back to businesses</button>}
+        <span className="setup-count">{String(Math.min(step + 1, steps.length)).padStart(2, "0")} / {String(steps.length).padStart(2, "0")}</span>
+      </div>
+    </div>
     <div className="onboarding-progress" aria-label="Setup progress">{steps.map((title, index) => <div className={`setup-step ${index === step ? "active" : ""} ${index < step ? "done" : ""}`} key={title}><span>{index < step ? <Check size={12} /> : index + 1}</span><small>{title}</small></div>)}</div>
     <h1>{step === 0 ? "Let's set up your business" : step === 1 ? "Tell customers about you" : step === 2 ? "Configure your experience" : step === 3 ? "Choose your plan" : "Activate your business"}</h1>
     <p>{step === 0 ? "Create your business profile and permanent 1QR." : step === 3 ? "Start with the tools your customers and team need." : step === 4 ? "Your QR is ready. Add your menu and finish the details from the dashboard." : "Add the details customers need to find and trust you."}</p><ErrorBox error={error} />
