@@ -1,0 +1,733 @@
+/* 1QR Prime — merchant UI regression fixes from production screencast.
+   Loaded last. This file intentionally owns only authenticated merchant surfaces
+   plus the public marketing header desktop/mobile visibility contract. */
+
+/* Marketing header: mobile-only links must never leak into desktop navigation. */
+@media (min-width: 901px) {
+  .marketing-header .marketing-nav .mobile-only {
+    display: none !important;
+  }
+  .marketing-header .marketing-actions > .marketing-signin,
+  .marketing-header .marketing-actions > .marketing-cta {
+    display: inline-flex !important;
+  }
+  .marketing-header .marketing-menu {
+    display: none !important;
+  }
+}
+
+/* Merchant shell: one final desktop geometry after legacy theme layers. */
+@media (min-width: 1101px) {
+  .platform-shell .platform-workspace,
+  .platform-shell .workspace {
+    width: auto;
+    min-width: 0;
+    margin-left: 264px !important;
+  }
+
+  .platform-shell .platform-topbar {
+    margin-right: 16px;
+  }
+
+  .platform-shell .workspace main {
+    width: min(100%, 1480px) !important;
+    max-width: 1480px !important;
+    padding: 34px 42px 76px !important;
+    margin: 0 auto !important;
+  }
+
+  .platform-shell .page-title {
+    width: 100%;
+  }
+}
+
+/* Keep the canvas useful at laptop widths instead of collapsing too early. */
+@media (min-width: 901px) and (max-width: 1100px) {
+  .platform-shell .platform-sidebar {
+    width: 214px !important;
+  }
+
+  .platform-shell .platform-workspace,
+  .platform-shell .workspace {
+    margin-left: 232px !important;
+  }
+
+  .platform-shell .workspace main {
+    width: 100% !important;
+    max-width: none !important;
+    padding: 30px 26px 64px !important;
+  }
+}
+
+/* Desktop business switcher: keep the selector inside the product visual language. */
+.platform-shell .business-switcher {
+  position: relative;
+  flex: none;
+  margin-bottom: 5px;
+}
+
+.platform-shell .business-switcher-trigger {
+  width: 100%;
+  min-height: 50px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 8px 10px 8px 11px;
+  color: #f7f7f3;
+  background: #101210;
+  border: 1px solid rgba(255,255,255,.09);
+  border-radius: 12px;
+  text-align: left;
+  box-shadow: none;
+}
+
+.platform-shell .business-switcher-trigger:hover {
+  background: #141714;
+  border-color: rgba(255,255,255,.14);
+}
+
+.platform-shell .business-switcher-trigger > span {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+
+.platform-shell .business-switcher-trigger small {
+  color: rgba(255,255,255,.34);
+  font-size: 8px;
+  font-weight: 760;
+  letter-spacing: .09em;
+  text-transform: uppercase;
+}
+
+.platform-shell .business-switcher-trigger strong {
+  overflow: hidden;
+  color: #f7f7f3;
+  font-size: 12px;
+  font-weight: 680;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.platform-shell .business-switcher-trigger > svg {
+  flex: none;
+  color: rgba(255,255,255,.45);
+  transition: transform .18s ease;
+}
+
+.platform-shell .business-switcher-trigger[aria-expanded="true"] > svg {
+  transform: rotate(180deg);
+}
+
+.platform-shell .business-switcher-menu {
+  position: absolute;
+  z-index: 80;
+  top: calc(100% + 7px);
+  left: 0;
+  width: min(320px, calc(100vw - 34px));
+  display: grid;
+  gap: 4px;
+  padding: 7px;
+  color: #f7f7f3;
+  background: rgba(16,18,16,.98);
+  border: 1px solid rgba(255,255,255,.11);
+  border-radius: 15px;
+  box-shadow: 0 24px 64px rgba(0,0,0,.42);
+  backdrop-filter: blur(20px) saturate(135%);
+}
+
+.platform-shell .business-switcher-menu > button {
+  width: 100%;
+  min-height: 54px;
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 9px;
+  color: rgba(255,255,255,.72);
+  background: transparent;
+  border: 0;
+  border-radius: 10px;
+  text-align: left;
+}
+
+.platform-shell .business-switcher-menu > button:hover {
+  color: #fff;
+  background: rgba(255,255,255,.06);
+}
+
+.platform-shell .business-switcher-menu > button.active {
+  color: #142016;
+  background: #c9d9a0;
+}
+
+.platform-shell .business-switcher-menu > button > span:nth-child(2) {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+
+.platform-shell .business-switcher-menu > button strong {
+  overflow: hidden;
+  color: inherit;
+  font-size: 11px;
+  font-weight: 760;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.platform-shell .business-switcher-menu > button small {
+  color: rgba(255,255,255,.38);
+  font-size: 9px;
+}
+
+.platform-shell .business-switcher-menu > button.active small {
+  color: rgba(20,32,22,.58);
+}
+
+.platform-shell .business-switcher-mark {
+  width: 32px;
+  height: 32px;
+  display: grid;
+  place-items: center;
+  color: #172015;
+  background: #dbe7bd;
+  border-radius: 9px;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.platform-shell .business-switcher-menu > button.active .business-switcher-mark {
+  background: rgba(255,255,255,.55);
+}
+
+/* Sidebar: reduce visual weight and make business context easier to scan. */
+@media (min-width: 901px) {
+  .platform-shell .platform-sidebar {
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  .platform-shell .platform-sidebar > select {
+    flex: none;
+    margin-bottom: 4px;
+  }
+
+  .platform-shell .platform-sidebar nav {
+    min-height: 0;
+    flex: 1;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    scrollbar-width: thin;
+  }
+
+  .platform-shell .platform-sidebar nav button {
+    flex: none;
+  }
+
+  .platform-shell .sidebar-foot {
+    flex: none;
+    background: linear-gradient(180deg, rgba(5,6,5,0), rgba(5,6,5,.95) 34%);
+  }
+}
+
+/* Onboarding inside the authenticated shell.
+   The old dark onboarding theme lost the specificity battle against .platform-shell .card,
+   producing dark plan content inside a white card with very low contrast. */
+.platform-shell .onboarding-card.narrow,
+.platform-shell .onboarding-card {
+  width: min(100%, 980px) !important;
+  max-width: 980px !important;
+  margin: 0 auto !important;
+  padding: clamp(30px, 4vw, 48px) !important;
+  color: var(--px-ink, #151817) !important;
+  background:
+    radial-gradient(620px 300px at 100% -10%, rgba(201,217,160,.18), transparent 72%),
+    rgba(255,255,255,.96) !important;
+  border: 1px solid rgba(21,24,23,.08) !important;
+  border-radius: 24px !important;
+  box-shadow: 0 28px 72px rgba(25,31,26,.08) !important;
+  backdrop-filter: none !important;
+}
+
+.platform-shell .onboarding-card .setup-heading {
+  align-items: center;
+  padding-bottom: 18px;
+  border-bottom-color: rgba(21,24,23,.08) !important;
+}
+
+.platform-shell .onboarding-card .auth-kicker {
+  color: #6c7f59 !important;
+}
+
+.platform-shell .onboarding-card .setup-business {
+  color: var(--px-ink, #151817) !important;
+  font-weight: 700;
+}
+
+.platform-shell .onboarding-card .setup-count {
+  color: #8a918a !important;
+}
+
+.platform-shell .onboarding-card .setup-exit {
+  min-height: 38px;
+  color: #4d6450 !important;
+  font-weight: 700;
+}
+
+.platform-shell .onboarding-card .onboarding-progress {
+  grid-template-columns: repeat(5, minmax(0, 1fr)) !important;
+  gap: 12px !important;
+  padding: 24px 0 30px !important;
+}
+
+.platform-shell .onboarding-card .setup-step {
+  position: relative;
+  gap: 8px;
+  color: #9a9f9a !important;
+}
+
+.platform-shell .onboarding-card .setup-step:not(:last-child)::after {
+  content: "";
+  position: absolute;
+  top: 14px;
+  left: 34px;
+  right: -6px;
+  height: 1px;
+  background: #e1e5dc;
+}
+
+.platform-shell .onboarding-card .setup-step.done:not(:last-child)::after {
+  background: #c9d9a0;
+}
+
+.platform-shell .onboarding-card .setup-step span {
+  position: relative;
+  z-index: 1;
+  width: 30px;
+  height: 30px;
+  color: #7b817b !important;
+  background: #fff !important;
+  border-color: #d9ded5 !important;
+}
+
+.platform-shell .onboarding-card .setup-step.active {
+  color: #253629 !important;
+}
+
+.platform-shell .onboarding-card .setup-step.active span {
+  color: #132015 !important;
+  background: #c9d9a0 !important;
+  border-color: #c9d9a0 !important;
+  box-shadow: 0 0 0 5px rgba(201,217,160,.19);
+}
+
+.platform-shell .onboarding-card .setup-step.done span {
+  color: #233522 !important;
+  background: #e6efd0 !important;
+  border-color: #d8e5bc !important;
+}
+
+.platform-shell .onboarding-card .setup-step small {
+  color: inherit !important;
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.platform-shell .onboarding-card > h1 {
+  max-width: 720px !important;
+  margin-top: 4px;
+  color: var(--px-ink, #151817) !important;
+  font: 650 clamp(34px, 4.4vw, 50px)/.98 Manrope, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif !important;
+  letter-spacing: -.06em !important;
+}
+
+.platform-shell .onboarding-card > p {
+  max-width: 680px !important;
+  margin-bottom: 28px;
+  color: #697069 !important;
+  font-size: 14px;
+  line-height: 1.55;
+}
+
+.platform-shell .onboarding-card .field {
+  max-width: 720px;
+}
+
+.platform-shell .onboarding-card .field > span {
+  color: #626962 !important;
+}
+
+.platform-shell .onboarding-card .field input,
+.platform-shell .onboarding-card .field select,
+.platform-shell .onboarding-card .field textarea {
+  color: #171a18 !important;
+  background: #fbfcf9 !important;
+  border-color: rgba(21,24,23,.12) !important;
+}
+
+.platform-shell .onboarding-card .field input:focus,
+.platform-shell .onboarding-card .field select:focus,
+.platform-shell .onboarding-card .field textarea:focus {
+  background: #fff !important;
+  border-color: #789360 !important;
+  box-shadow: 0 0 0 4px rgba(120,147,96,.12) !important;
+}
+
+.platform-shell .onboarding-card .slug-preview {
+  max-width: 720px;
+  color: #3e6045;
+  background: #f3f7eb;
+  border-color: #dfe8ce;
+}
+
+/* Plan selection: readable, calm, and part of the same light console world. */
+.platform-shell .onboarding-card .plan-grid {
+  max-width: 760px;
+  grid-template-columns: 1fr;
+  gap: 12px;
+  margin: 22px 0 8px;
+}
+
+.platform-shell .onboarding-card .plan-card {
+  min-height: 290px;
+  padding: 28px !important;
+  color: var(--px-ink, #151817) !important;
+  background:
+    radial-gradient(360px 180px at 100% 0%, rgba(201,217,160,.22), transparent 72%),
+    #f8faf4 !important;
+  border: 1px solid #dfe6d7 !important;
+  border-radius: 18px !important;
+  box-shadow: none !important;
+}
+
+.platform-shell .onboarding-card .plan-card:hover {
+  transform: none;
+  border-color: #c6d5ad !important;
+}
+
+.platform-shell .onboarding-card .plan-card.selected {
+  background:
+    radial-gradient(380px 220px at 100% 0%, rgba(201,217,160,.35), transparent 70%),
+    linear-gradient(145deg, #f6f9ef, #eef4df) !important;
+  border-color: #b7ca94 !important;
+  box-shadow: inset 0 0 0 1px rgba(111,139,76,.08) !important;
+}
+
+.platform-shell .onboarding-card .plan-card > strong,
+.platform-shell .onboarding-card .plan-price-main {
+  color: #172019 !important;
+}
+
+.platform-shell .onboarding-card .plan-card > strong {
+  font-size: 23px;
+}
+
+.platform-shell .onboarding-card .plan-price-main {
+  font-size: clamp(38px, 4vw, 48px);
+}
+
+.platform-shell .onboarding-card .plan-price-period,
+.platform-shell .onboarding-card .plan-price-note,
+.platform-shell .onboarding-card .plan-features {
+  color: #687068 !important;
+}
+
+.platform-shell .onboarding-card .plan-price-note del {
+  color: #9a9f9a !important;
+}
+
+.platform-shell .onboarding-card .plan-features {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px 18px;
+  margin-top: 18px;
+}
+
+.platform-shell .onboarding-card .plan-features svg {
+  color: #53734a !important;
+}
+
+.platform-shell .onboarding-card .plan-selected {
+  color: #3b683e !important;
+  font-weight: 800;
+}
+
+.platform-shell .onboarding-card .onboarding-actions {
+  min-height: 70px;
+  align-items: center;
+  padding-top: 20px;
+  margin-top: 24px;
+  border-top-color: rgba(21,24,23,.08) !important;
+}
+
+.platform-shell .onboarding-card .onboarding-actions .secondary {
+  color: #303530;
+  background: #f6f7f3;
+  border-color: rgba(21,24,23,.10);
+}
+
+.platform-shell .onboarding-card .onboarding-actions .primary {
+  min-width: 176px;
+  color: #fff;
+  background: #244b40;
+  border-color: #244b40;
+  box-shadow: 0 10px 24px rgba(36,75,64,.12);
+}
+
+.platform-shell .onboarding-card .onboarding-actions .primary:hover:not(:disabled) {
+  background: #1e4037;
+  border-color: #1e4037;
+}
+
+/* Orders: make it a real desktop operations surface instead of a phone card on a large canvas. */
+.platform-shell.section-orders .toolbar {
+  position: sticky;
+  top: 76px;
+  display: grid !important;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center !important;
+  gap: 12px;
+  padding: 10px 12px !important;
+  margin-bottom: 12px;
+}
+
+.platform-shell.section-orders .toolbar > .badge {
+  justify-self: start;
+}
+
+.platform-shell.section-orders .toolbar .button-row {
+  display: flex !important;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 7px;
+  margin-left: 0 !important;
+}
+
+.platform-shell.section-orders .toolbar .secondary {
+  width: auto !important;
+  min-height: 38px;
+  padding-inline: 12px;
+  font-size: 11px;
+}
+
+.platform-shell.section-orders .tabs {
+  margin-bottom: 14px;
+}
+
+.platform-shell.section-orders .compact-filter {
+  width: min(100%, 280px);
+  max-width: 280px;
+  margin-bottom: 16px;
+}
+
+.platform-shell.section-orders .compact-filter > span {
+  font-size: 11px;
+}
+
+.platform-shell.section-orders .compact-filter select {
+  min-height: 44px;
+  background: rgba(255,255,255,.92);
+}
+
+.platform-shell.section-orders .orders-grid {
+  width: 100%;
+  display: grid !important;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 430px), 1fr)) !important;
+  align-items: start;
+  gap: 14px !important;
+}
+
+.platform-shell.section-orders .order-card {
+  width: 100%;
+  max-width: none !important;
+  min-height: 0;
+  padding: 22px !important;
+  border-radius: 17px;
+}
+
+.platform-shell.section-orders .order-card:hover {
+  transform: none;
+}
+
+.platform-shell.section-orders .order-card .card-heading {
+  align-items: center;
+  margin-bottom: 10px;
+}
+
+.platform-shell.section-orders .order-card .card-heading h3 {
+  color: #151817;
+  font-size: 20px;
+  letter-spacing: -.035em;
+}
+
+.platform-shell.section-orders .order-card > small {
+  margin: 4px 0;
+  color: #747b74;
+  font-size: 11px;
+}
+
+.platform-shell.section-orders .order-lines {
+  gap: 0;
+  margin: 14px 0;
+  padding: 4px 0;
+}
+
+.platform-shell.section-orders .order-lines > div {
+  min-height: 62px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px 14px;
+  padding: 10px 0;
+  border-bottom: 1px solid rgba(21,24,23,.065);
+}
+
+.platform-shell.section-orders .order-lines > div:last-child {
+  border-bottom: 0;
+}
+
+.platform-shell.section-orders .order-lines > div > .text-button,
+.platform-shell.section-orders .order-lines > div > .error-text {
+  grid-column: 1 / -1;
+  width: fit-content;
+  min-height: 28px;
+  margin-top: -4px;
+  font-size: 10px;
+}
+
+.platform-shell.section-orders .order-card > .list-row {
+  min-height: 54px;
+  padding: 11px 12px;
+  margin: 4px 0 10px;
+  background: #f5f7f1;
+  border: 1px solid rgba(21,24,23,.06);
+  border-radius: 11px;
+}
+
+.platform-shell.section-orders .order-card > .button-row {
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.platform-shell.section-orders .order-card > .button-row button {
+  min-height: 40px;
+}
+
+.platform-shell.section-orders .order-card > .text-button {
+  display: inline-flex;
+  align-items: center;
+  min-height: 34px;
+  margin: 9px 14px 0 0;
+  color: #456246;
+  font-size: 11px;
+  font-weight: 760;
+}
+
+.platform-shell.section-orders .order-card > .text-button + .text-button {
+  margin-left: 0;
+}
+
+.platform-shell.section-orders .order-card > .text-button:hover {
+  color: #244b40;
+}
+
+.platform-shell.section-orders .service-request-columns,
+.platform-shell.section-orders .card:has(> .empty) {
+  width: 100%;
+}
+
+/* Overview should use the widened working canvas without stretching readable cards. */
+@media (min-width: 1101px) {
+  .platform-shell.section-overview .two-columns {
+    grid-template-columns: minmax(0, 1.45fr) minmax(340px, .55fr) !important;
+    gap: 16px;
+  }
+
+  .platform-shell.section-overview .quick-actions {
+    display: flex;
+    flex-wrap: wrap;
+  }
+}
+
+/* Mobile/tablet stays compact and touch-first. */
+@media (max-width: 900px) {
+  .platform-shell .business-switcher {
+    display: none;
+  }
+
+  .platform-shell .onboarding-card.narrow,
+  .platform-shell .onboarding-card {
+    width: 100% !important;
+    max-width: none !important;
+    padding: 24px 18px !important;
+    border-radius: 18px !important;
+  }
+
+  .platform-shell .onboarding-card .onboarding-progress {
+    gap: 6px !important;
+    overflow-x: auto;
+  }
+
+  .platform-shell .onboarding-card .setup-step:not(:last-child)::after {
+    display: none;
+  }
+
+  .platform-shell .onboarding-card .setup-step small {
+    font-size: 8px;
+  }
+
+  .platform-shell .onboarding-card .plan-features {
+    grid-template-columns: 1fr;
+  }
+
+  .platform-shell.section-orders .toolbar {
+    position: relative;
+    top: auto;
+    grid-template-columns: 1fr;
+  }
+
+  .platform-shell.section-orders .toolbar .button-row {
+    display: grid !important;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    justify-content: stretch;
+  }
+
+  .platform-shell.section-orders .toolbar .secondary {
+    width: 100% !important;
+    min-height: 44px;
+  }
+
+  .platform-shell.section-orders .orders-grid {
+    grid-template-columns: 1fr !important;
+  }
+}
+
+@media (max-width: 520px) {
+  .platform-shell .onboarding-card .setup-heading {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .platform-shell .onboarding-card .setup-heading-actions {
+    width: 100%;
+    justify-content: space-between;
+  }
+
+  .platform-shell .onboarding-card .onboarding-actions {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 8px;
+  }
+
+  .platform-shell .onboarding-card .onboarding-actions .primary,
+  .platform-shell .onboarding-card .onboarding-actions .secondary {
+    width: 100%;
+  }
+
+  .platform-shell.section-orders .toolbar .button-row {
+    grid-template-columns: 1fr;
+  }
+}
