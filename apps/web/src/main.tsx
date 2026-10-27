@@ -3317,7 +3317,7 @@ function Customer({ slug, initialView = "hub" }: { slug: string; initialView?: "
           <small>Opening a payment app does not confirm payment. Check the payee and amount.</small>
         </section>
       )}
-      {view === "menu" && menuBusiness && !b.profile.manualClosed && (
+      {view === "menu" && menuBusiness && (
         <div className="customer-menu-tools">
           <div className="customer-menu-search-wrap"><Search size={18} /><input className="customer-menu-search" aria-label="Search menu" placeholder="Search the menu" value={search} onChange={(e) => setSearch(e.target.value)} /></div>
           <div className="customer-category-row" role="tablist" aria-label="Menu categories">
@@ -3327,6 +3327,12 @@ function Customer({ slug, initialView = "hub" }: { slug: string; initialView?: "
           <div className="filter-row customer-food-filter" role="group" aria-label="Food filters">
             {[["all", "All"], ["VEG", "Veg"], ["NON_VEG", "Non-veg"], ["VEGAN", "Vegan"]].map(([value, text]) => <button key={value} className={foodFilter === value ? "selected" : "secondary"} onClick={() => setFoodFilter(value)}>{text}</button>)}
           </div>
+        </div>
+      )}
+      {view === "menu" && b.profile.manualClosed && (
+        <div className="customer-menu-closed" role="status">
+          <Clock size={17} aria-hidden="true" />
+          <span><strong>Ordering is paused right now</strong><small>You can still browse the menu and come back when ordering reopens.</small></span>
         </div>
       )}
       {view === "menu" && !!b.promotions?.length && <section className="customer-menu-featured" aria-label="Featured offers"><div className="customer-feature-heading"><Badge tone="amber">SPECIAL OFFERS</Badge><span>Live on this menu</span></div>{b.promotions.slice(0, 3).map((promotion: Any) => <button type="button" className="customer-menu-offer" key={promotion.id} onClick={() => openPromotion(promotion.id)}><div><strong>{promotion.title}</strong><small>{promotion.description}</small></div><span>See offer <ArrowUpRight size={14} /></span></button>)}</section>}
@@ -3492,7 +3498,7 @@ function Customer({ slug, initialView = "hub" }: { slug: string; initialView?: "
                                 <span aria-live="polite">{cart[i.id]}</span>
                                 <button
                                   aria-label={`Add one ${i.name}`}
-                                  disabled={!i.available || pending}
+                                  disabled={!i.available || pending || b.profile.manualClosed}
                                   onClick={() => openItem(i)}
                                 >
                                   +
@@ -3502,7 +3508,7 @@ function Customer({ slug, initialView = "hub" }: { slug: string; initialView?: "
                               <button
                                 type="button"
                                 className="customer-add-button"
-                                disabled={!i.available || pending}
+                                disabled={!i.available || pending || b.profile.manualClosed}
                                 onClick={() => openItem(i)}
                               >
                                 <Plus size={15} aria-hidden="true" />
@@ -3525,14 +3531,22 @@ function Customer({ slug, initialView = "hub" }: { slug: string; initialView?: "
                 <div><Badge>YOUR CART</Badge><h2 id="customer-cart-title">Review your order</h2><p>Make changes before sending it to {b.name}.</p></div>
                 {!pending && <button type="button" className="customer-sheet-close" aria-label="Close cart" onClick={() => setCartOpen(false)}>×</button>}
               </div>
-              {lines.map((i: Any) => (
-                <div className="list-row" key={i.id}>
-                  <span>
-                    {cart[i.id]} × {i.name}
-                  </span>
-                  <strong>{money(effectiveItemPricePaise(i) * cart[i.id])}</strong>
-                </div>
-              ))}
+              <div className="customer-cart-lines">
+                {lines.map((i: Any) => (
+                  <div className="customer-cart-line" key={i.id}>
+                    <div>
+                      <strong>{i.name}</strong>
+                      <small>{money(effectiveItemPricePaise(i))} each</small>
+                    </div>
+                    <div className="quantity customer-quantity" aria-label={`Quantity for ${i.name}`}>
+                      <button type="button" aria-label={`Remove one ${i.name}`} disabled={pending} onClick={() => change(i, -1)}>−</button>
+                      <span aria-live="polite">{cart[i.id]}</span>
+                      <button type="button" aria-label={`Add one ${i.name}`} disabled={pending || b.profile.manualClosed} onClick={() => change(i, 1)}>+</button>
+                    </div>
+                    <strong className="customer-cart-line-total">{money(effectiveItemPricePaise(i) * cart[i.id])}</strong>
+                  </div>
+                ))}
+              </div>
               <Field
                 title="Special instructions (optional)"
                 value={instructions}
