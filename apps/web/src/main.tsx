@@ -2984,20 +2984,30 @@ function applyCustomerSeo(business: Any, slug: string) {
   const profile = business?.profile || {};
   const appearance = profile.appearance || {};
   const hasMenu = !!business?.capabilities?.menu;
+  const orderingEnabled = !!profile.orderEnabled;
   const category = String(business?.category || "business");
   const categoryLabel = label(category);
   const title = hasMenu
-    ? `${business.name} Menu & Ordering | 1QR Prime`
+    ? `${business.name} Menu${orderingEnabled ? " & Ordering" : ""} | 1QR Prime`
     : `${business.name} | 1QR Prime`;
   const fallbackDescription = hasMenu
     ? `View ${business.name}'s live ${categoryLabel.toLowerCase()} menu, current availability and customer actions.`
     : `View ${business.name}'s current business information and customer actions.`;
   const description = String(profile.description || fallbackDescription).trim().slice(0, 180);
-  const imageSource = appearance.coverUrl || appearance.logoUrl || "/apple-touch-icon.png";
-  let imageUrl = "https://1qrprime.com/apple-touch-icon.png";
-  try {
-    imageUrl = new URL(imageSource, canonicalUrl).toString();
-  } catch {}
+  const resolvePublicUrl = (value: unknown) => {
+    if (!value) return null;
+    try {
+      const resolved = new URL(String(value), canonicalUrl);
+      return /^https?:$/.test(resolved.protocol) ? resolved.toString() : null;
+    } catch {
+      return null;
+    }
+  };
+  const imageUrl =
+    resolvePublicUrl(appearance.coverUrl) ||
+    resolvePublicUrl(appearance.logoUrl) ||
+    "https://1qrprime.com/apple-touch-icon.png";
+  const logoUrl = resolvePublicUrl(appearance.logoUrl);
 
   document.title = title;
   upsertCustomerMeta('meta[name="description"]', "content", description);
@@ -3052,7 +3062,7 @@ function applyCustomerSeo(business: Any, slug: string) {
     profile.youtubeUrl,
     profile.xUrl,
     profile.linkedinUrl,
-  ].filter(Boolean);
+  ].map(resolvePublicUrl).filter((value): value is string => !!value);
   schema.textContent = JSON.stringify({
     "@context": "https://schema.org",
     "@type": schemaType,
@@ -3061,7 +3071,7 @@ function applyCustomerSeo(business: Any, slug: string) {
     url: canonicalUrl,
     description,
     image: imageUrl,
-    ...(appearance.logoUrl ? { logo: new URL(appearance.logoUrl, canonicalUrl).toString() } : {}),
+    ...(logoUrl ? { logo: logoUrl } : {}),
     ...(profile.phone ? { telephone: profile.phone } : {}),
     ...(profile.address
       ? {
