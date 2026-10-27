@@ -231,7 +231,7 @@ function BusinessSwitcher({
         className="business-switcher-trigger"
         aria-expanded={open}
         aria-controls="business-switcher-options"
-        onClick={() => setOpen((value) => !value)
+        onClick={() => setOpen((value) => !value)}
       >
         <span>
           <small>Current business</small>
