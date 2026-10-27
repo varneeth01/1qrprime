@@ -1538,6 +1538,56 @@ export async function createApp(
     },
   );
   app.get("/api/orders/:oid", async (r) => orderRepository.publicView(await orderAccess(r)));
+  app.post(
+    "/api/orders/:oid/items/:itemId/cancel",
+    { config: { rateLimit: { max: 20, timeWindow: "1 minute" } } },
+    async (r) => {
+      const order = await orderAccess(r);
+      const body = z.object({
+        quantity: z.number().int().min(1).max(20).default(1),
+        idempotencyKey: z.uuid(),
+      }).parse(r.body);
+      const location = await businessRepository.getLocation(order.location_id);
+      if (!location) fail(404, "Location not found");
+      const result = await asyncDb.transaction((tx) =>
+        operationsRepository.cancelItem(tx, {
+          id: id(),
+          locationId: location.id,
+          tenantId: location.tenant_id,
+          orderId: order.id,
+          itemId: (r.params as any).itemId,
+          quantity: body.quantity,
+          idempotencyKey: body.idempotencyKey,
+          actorId: `customer:${hash(order.access_token).slice(0, 16)}`,
+          actorRole: "customer",
+          reason: "Customer requested",
+          note: "",
+          override: false,
+        }),
+      );
+      realtime.emit({
+        id: id(),
+        tenantId: location.tenant_id,
+        locationId: location.id,
+        kind: "order.updated",
+        audience: "kitchen",
+        data: {
+          orderId: order.id,
+          itemId: (r.params as any).itemId,
+          itemCancelled: true,
+          itemName: result.itemName,
+          tableName: result.tableName,
+          cancelledQuantity: result.cancelledQuantity,
+          source: "customer",
+        },
+      });
+      const updated = await orderRepository.getById(order.id, location.id);
+      return {
+        ...result,
+        order: await orderRepository.publicView(updated),
+      };
+    },
+  );
   app.get("/api/public/orders/:token", async (r) => {
     const o = await orderRepository.getByTrackingToken((r.params as any).token);
     if (!o) fail(404, "Order not found");

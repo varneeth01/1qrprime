@@ -12,7 +12,7 @@ export class OrderOperationsRepository {
     if (prior) return { ...parse(prior.response_json), idempotent: true };
     const order = await tx.get<any>("SELECT * FROM orders WHERE id=? AND location_id=?", [input.orderId, input.locationId]);
     if (!order) throw error(404, "Order not found");
-    if (["rejected", "cancelled", "closed"].includes(order.state)) throw error(409, "Order is no longer editable");
+    if (["rejected", "cancelled", "closed", "completed"].includes(order.state)) throw error(409, "Order is no longer editable");
     const item = await tx.get<any>("SELECT * FROM order_items WHERE id=? AND order_id=?", [input.itemId, input.orderId]);
     if (!item) throw error(404, "Order item not found");
     const remaining = Number(item.quantity) - Number(item.cancelled_quantity || 0);

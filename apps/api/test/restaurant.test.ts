@@ -73,6 +73,56 @@ test("restaurant menu supports categories, variants and modifiers with authorita
   assert.equal(tracked.body.customer_phone, undefined);
 });
 
+test("customer can keep ordering while an earlier order remains independently editable", async () => {
+  const first = await call("POST", `/public/${slug}/orders`, {
+    idempotencyKey: randomUUID(),
+    lines: [{ itemId: item, quantity: 2, variantId: variant, modifierIds: [modifier] }],
+    orderType: "takeaway",
+    paymentMethod: "counter",
+  });
+  assert.equal(first.status, 200);
+  const second = await call("POST", `/public/${slug}/orders`, {
+    idempotencyKey: randomUUID(),
+    lines: [{ itemId: item, quantity: 1, variantId: variant, modifierIds: [modifier] }],
+    orderType: "takeaway",
+    paymentMethod: "counter",
+  });
+  assert.equal(second.status, 200);
+  assert.notEqual(second.body.id, first.body.id);
+
+  const orderItem = first.body.orderItems[0];
+  const cancelled = await app.inject({
+    method: "POST",
+    url: `/api/orders/${first.body.id}/items/${orderItem.order_item_id}/cancel`,
+    headers: { "x-order-token": first.body.accessToken },
+    payload: { quantity: 1, idempotencyKey: randomUUID() },
+  });
+  assert.equal(cancelled.statusCode, 200);
+  assert.equal(cancelled.json().order.orderItems[0].cancelled_quantity, 1);
+  assert.equal(cancelled.json().order.orderItems[0].quantity, 2);
+
+  const secondTracked = await app.inject({
+    method: "GET",
+    url: `/api/orders/${second.body.id}`,
+    headers: { "x-order-token": second.body.accessToken },
+  });
+  assert.equal(secondTracked.statusCode, 200);
+  assert.equal(secondTracked.json().state, "submitted");
+
+  db.prepare("UPDATE order_items SET cancellable_until=? WHERE id=?").run(
+    new Date(Date.now() - 60_000).toISOString(),
+    orderItem.order_item_id,
+  );
+  const locked = await app.inject({
+    method: "POST",
+    url: `/api/orders/${first.body.id}/items/${orderItem.order_item_id}/cancel`,
+    headers: { "x-order-token": first.body.accessToken },
+    payload: { quantity: 1, idempotencyKey: randomUUID() },
+  });
+  assert.equal(locked.statusCode, 409);
+  assert.equal(locked.json().code, "ITEM_CANCELLATION_LOCKED");
+});
+
 test("restaurant order transitions require an explicit rejection reason", async () => {
   const order = await call("POST", `/public/${slug}/orders`, { idempotencyKey: randomUUID(), lines: [{ itemId: item, quantity: 1, variantId: variant, modifierIds: [modifier] }], orderType: "takeaway", paymentMethod: "counter" });
   assert.equal((await call("POST", `/locations/${lid}/orders/${order.body.id}/state`, { state: "rejected", expectedState: "submitted" })).status, 400);
