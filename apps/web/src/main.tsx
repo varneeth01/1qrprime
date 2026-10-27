@@ -57,6 +57,7 @@ import "./style.css";
 import "./marketing.css";
 import "./apple-ui.css";
 import "./console-theme.css";
+import "./product-polish.css";
 const LazyMarketingRouter = React.lazy(async () => {
   const module = await import("./marketing");
   return { default: module.MarketingRouter };
@@ -602,7 +603,7 @@ function App() {
       </div>
     );
   return (
-    <div className="shell platform-shell">
+    <div className={`shell platform-shell section-${section}`}>
       <aside className="sidebar platform-sidebar">
         <Brand />
         <div className="workspace-label">BUSINESS</div>
