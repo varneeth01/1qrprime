@@ -792,6 +792,165 @@
   box-shadow:0 18px 50px rgba(0,0,0,.18);
 }
 
+/* --- Customer multi-order controls --- */
+.customer-branded .customer-order-history {
+  display:grid;
+  gap:12px;
+  margin:18px 14px 24px;
+}
+.customer-branded .customer-order-history-heading {
+  display:flex;
+  align-items:flex-end;
+  justify-content:space-between;
+  gap:18px;
+  padding:0 2px;
+}
+.customer-branded .customer-order-history-heading h2 {
+  margin:7px 0 5px;
+  color:var(--business-text,#202f2c);
+  font:700 clamp(23px,6vw,31px)/1 Manrope,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+  letter-spacing:-.045em;
+}
+.customer-branded .customer-order-history-heading p {
+  max-width:520px;
+  margin:0;
+  color:color-mix(in srgb,var(--business-text,#202f2c) 62%,transparent);
+  font-size:12px;
+  line-height:1.5;
+}
+.customer-branded .customer-order-history-heading > span {
+  flex:none;
+  color:color-mix(in srgb,var(--business-text,#202f2c) 52%,transparent);
+  font-size:10px;
+}
+.customer-branded .customer-order-history-list {
+  display:grid;
+  gap:10px;
+}
+.customer-branded .customer-order-status-card {
+  padding:17px;
+  color:var(--business-text,#202f2c);
+  background:color-mix(in srgb,var(--business-bg,#fff) 93%,#fff);
+  border:1px solid color-mix(in srgb,var(--business-text,#202f2c) 9%,transparent);
+  border-radius:17px;
+  box-shadow:0 10px 26px color-mix(in srgb,var(--business-text,#202f2c) 6%,transparent);
+}
+.customer-branded .customer-order-status-card .card-heading {
+  margin-bottom:9px;
+}
+.customer-branded .customer-order-status-card h3 {
+  margin:5px 0 0;
+  color:var(--business-text,#202f2c);
+  font:700 18px/1 Manrope,sans-serif;
+  letter-spacing:-.035em;
+}
+.customer-branded .customer-order-status-card > p {
+  margin:0 0 12px;
+  font-size:12px;
+}
+.customer-branded .customer-order-items {
+  display:grid;
+  border-top:1px solid color-mix(in srgb,var(--business-text,#202f2c) 8%,transparent);
+}
+.customer-branded .customer-order-item-row {
+  display:grid;
+  grid-template-columns:minmax(0,1fr) auto;
+  gap:14px;
+  align-items:center;
+  padding:12px 0;
+  border-bottom:1px solid color-mix(in srgb,var(--business-text,#202f2c) 8%,transparent);
+}
+.customer-branded .customer-order-item-row > div:first-child {
+  display:grid;
+  gap:3px;
+}
+.customer-branded .customer-order-item-row strong {
+  color:var(--business-text,#202f2c);
+  font-size:12px;
+}
+.customer-branded .customer-order-item-row small {
+  color:color-mix(in srgb,var(--business-text,#202f2c) 56%,transparent);
+  font-size:10px;
+}
+.customer-branded .customer-order-item-actions {
+  display:grid;
+  justify-items:end;
+  gap:5px;
+}
+.customer-branded .customer-order-cancel {
+  min-height:30px;
+  color:#9c3d3d;
+  font-size:10px;
+  font-weight:750;
+}
+.customer-branded .customer-order-total {
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:12px;
+  padding-top:13px;
+}
+.customer-branded .customer-order-total > strong {
+  color:var(--business-text,#202f2c);
+  font-size:14px;
+}
+.customer-branded .customer-order-status-card > .primary {
+  width:100%;
+  margin-top:12px;
+}
+.customer-branded .customer-order-more {
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:14px;
+  padding:13px 14px;
+  color:var(--business-text,#202f2c);
+  background:color-mix(in srgb,var(--business-secondary,#deedaf) 24%,var(--business-bg,#fff));
+  border:1px solid color-mix(in srgb,var(--business-primary,#174f43) 10%,transparent);
+  border-radius:14px;
+}
+.customer-branded .customer-order-more > div {
+  min-width:0;
+  display:flex;
+  align-items:center;
+  gap:10px;
+}
+.customer-branded .customer-order-more svg {
+  flex:none;
+  color:var(--business-primary,#174f43);
+}
+.customer-branded .customer-order-more span {
+  display:grid;
+  gap:2px;
+}
+.customer-branded .customer-order-more strong {
+  color:var(--business-text,#202f2c);
+  font-size:11px;
+}
+.customer-branded .customer-order-more small {
+  color:color-mix(in srgb,var(--business-text,#202f2c) 60%,transparent);
+  font-size:10px;
+}
+@media (max-width:620px) {
+  .customer-branded .customer-order-history {
+    margin-inline:10px;
+  }
+  .customer-branded .customer-order-history-heading {
+    display:grid;
+    gap:6px;
+  }
+  .customer-branded .customer-order-history-heading > span {
+    justify-self:start;
+  }
+  .customer-branded .customer-order-more {
+    align-items:flex-start;
+    flex-direction:column;
+  }
+  .customer-branded .customer-order-more > button {
+    width:100%;
+  }
+}
+
 /* --- Public customer QR surface --- */
 .customer-branded.customer-wrap,
 .customer-wrap.customer-branded {

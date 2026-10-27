@@ -2899,9 +2899,16 @@ function Customer({ slug, initialView = "hub" }: { slug: string; initialView?: "
     [cart, setCart] = useState<Record<string, number>>(() =>
       JSON.parse(localStorage.getItem(`cart:${slug}`) || "{}"),
     ),
-    [order, setOrder] = useState<Any | null>(() =>
-      JSON.parse(localStorage.getItem(`order:${slug}`) || "null"),
-    ),
+    [orders, setOrders] = useState<Any[]>(() => {
+      try {
+        const saved = JSON.parse(localStorage.getItem(`orders:${slug}`) || "[]");
+        if (Array.isArray(saved) && saved.length) return saved;
+        const legacy = JSON.parse(localStorage.getItem(`order:${slug}`) || "null");
+        return legacy ? [legacy] : [];
+      } catch {
+        return [];
+      }
+    }),
     [busy, setBusy] = useState(false),
     [instructions, setInstructions] = useState(""),
     [type, setType] = useState("takeaway"),
@@ -2926,13 +2933,15 @@ function Customer({ slug, initialView = "hub" }: { slug: string; initialView?: "
     [quickPayAmount, setQuickPayAmount] = useState(""),
     [paySheetOpen, setPaySheetOpen] = useState(false),
     [paymentPhoneError, setPaymentPhoneError] = useState(""),
-    [paymentIntent, setPaymentIntent] = useState<{ amount?: number; linkedOrder: boolean } | null>(null),
+    [paymentIntent, setPaymentIntent] = useState<{ amount?: number; linkedOrder: boolean; orderId?: string } | null>(null),
     [rewards, setRewards] = useState<Any[]>([]),
     [rewardBusy, setRewardBusy] = useState(false),
     [rewardError, setRewardError] = useState(""),
     [selectedRewardId, setSelectedRewardId] = useState<string | null>(null),
     [rewardQuote, setRewardQuote] = useState<Any | null>(null);
   const [reviewOpen, setReviewOpen] = useState(false), [slideValue, setSlideValue] = useState(0);
+  const order = orders[0] || null;
+  const orderPollKey = orders.map((item: Any) => `${item.id}:${item.accessToken || ""}`).join("|");
   const loaded = useRef(false);
   const tableQuery = () => window.location.search || "";
   const event = (kind: string) =>
@@ -2982,35 +2991,48 @@ function Customer({ slug, initialView = "hub" }: { slug: string; initialView?: "
     localStorage.setItem(`cart:${slug}`, JSON.stringify(cart));
   }, [cart, slug]);
   useEffect(() => {
-    if (!order) return;
+    if (!orders.length) return;
     let mounted = true;
+    const snapshot = orders.slice(0, 8);
     const poll = async () => {
       try {
-        const next = await api(
-          `/orders/${order.id}`,
-          "GET",
-          undefined,
-          order.accessToken,
+        const refreshed = await Promise.all(
+          snapshot.map(async (savedOrder: Any) => {
+            try {
+              const next = await api(
+                `/orders/${savedOrder.id}`,
+                "GET",
+                undefined,
+                savedOrder.accessToken,
+              );
+              return { ...savedOrder, ...next, accessToken: savedOrder.accessToken };
+            } catch {
+              return savedOrder;
+            }
+          }),
         );
         if (mounted) {
-          setOrder((o: Any) => ({ ...o, ...next }));
+          setOrders((current: Any[]) =>
+            current.map((savedOrder: Any) => refreshed.find((item: Any) => item.id === savedOrder.id) || savedOrder),
+          );
           setConnection("Status up to date");
         }
       } catch {
         if (mounted)
-          setConnection("Offline · reconnecting. Your order is saved.");
+          setConnection("Offline · reconnecting. Your orders are saved.");
       }
     };
-    poll();
-    const timer = setInterval(poll, 4000);
+    void poll();
+    const timer = setInterval(() => void poll(), 4000);
     return () => {
       mounted = false;
       clearInterval(timer);
     };
-  }, [order?.id, slug]);
+  }, [orderPollKey, slug]);
   useEffect(() => {
-    if (order) localStorage.setItem(`order:${slug}`, JSON.stringify(order));
-  }, [order, slug]);
+    localStorage.setItem(`orders:${slug}`, JSON.stringify(orders.slice(0, 8)));
+    localStorage.removeItem(`order:${slug}`);
+  }, [orders, slug]);
   const lines = b?.items.filter((i: Any) => cart[i.id] > 0) || [],
     total = lines.reduce(
       (sum: number, i: Any) => sum + effectiveItemPricePaise(i) * cart[i.id],
@@ -3068,8 +3090,12 @@ function Customer({ slug, initialView = "hub" }: { slug: string; initialView?: "
     setPending(true);
     try {
       const o = await api(`/public/${slug}/orders`, "POST", body);
-      setOrder(o);
+      setOrders((current: Any[]) => [o, ...current.filter((savedOrder: Any) => savedOrder.id !== o.id)].slice(0, 8));
       setCart({});
+      setCustomizations({});
+      setInstructions("");
+      setSelectedRewardId(null);
+      setRewardQuote(null);
       localStorage.removeItem(`pending:${slug}`);
       setPending(false);
     } catch (e) {
@@ -3111,21 +3137,21 @@ function Customer({ slug, initialView = "hub" }: { slug: string; initialView?: "
       setRewardError(message.includes("already") || message.includes("no longer") ? "This reward has already been used." : message);
     } finally { setRewardBusy(false); }
   }
-  function requestPayment(amount?: number, linkedOrder = false) {
+  function requestPayment(amount?: number, linkedOrder = false, targetOrder: Any | null = order) {
     setPaymentPhoneError("");
-    setPaymentIntent({ amount, linkedOrder });
+    setPaymentIntent({ amount, linkedOrder, ...(linkedOrder && targetOrder ? { orderId: targetOrder.id } : {}) });
     setPaySheetOpen(true);
   }
-  async function pay(amount?: number, linkedOrder = false, phoneValue = customerPhone) {
+  async function pay(amount?: number, linkedOrder = false, phoneValue = customerPhone, targetOrder: Any | null = order) {
     try {
-      const key = `payment:${linkedOrder && order ? order.id : slug}`;
+      const key = `payment:${linkedOrder && targetOrder ? targetOrder.id : slug}`;
       let paymentKey = sessionStorage.getItem(key);
       if (!paymentKey) {
         paymentKey = crypto.randomUUID();
         sessionStorage.setItem(key, paymentKey);
       }
       const p = await api(
-        linkedOrder && order ? `/orders/${order.id}/payments` : `/public/${slug}/payments`,
+        linkedOrder && targetOrder ? `/orders/${targetOrder.id}/payments` : `/public/${slug}/payments`,
         "POST",
         {
           idempotencyKey: paymentKey,
@@ -3134,7 +3160,7 @@ function Customer({ slug, initialView = "hub" }: { slug: string; initialView?: "
           ...(amount ? { amountPaise: amount } : {}),
           ...(!linkedOrder && b?.table ? { tableId: b.table.id, tableToken: b.table.publicToken } : {}),
         },
-        order?.accessToken,
+        targetOrder?.accessToken,
       );
       setPayment(p);
       event("payment_click");
@@ -3154,7 +3180,32 @@ function Customer({ slug, initialView = "hub" }: { slug: string; initialView?: "
     sessionStorage.setItem(`customer-phone:${slug}`, normalized);
     setPaymentPhoneError("");
     setPaySheetOpen(false);
-    if (paymentIntent) await pay(paymentIntent.amount, paymentIntent.linkedOrder, normalized);
+    if (paymentIntent) {
+      const targetOrder = paymentIntent.orderId
+        ? orders.find((savedOrder: Any) => savedOrder.id === paymentIntent.orderId) || null
+        : order;
+      await pay(paymentIntent.amount, paymentIntent.linkedOrder, normalized, targetOrder);
+    }
+  }
+  async function cancelCustomerItem(targetOrder: Any, item: Any) {
+    const remaining = Number(item.quantity || 0) - Number(item.cancelled_quantity || 0);
+    if (remaining <= 0) return;
+    setBusy(true);
+    setError("");
+    try {
+      const result = await api(
+        `/orders/${targetOrder.id}/items/${item.order_item_id}/cancel`,
+        "POST",
+        { quantity: 1, idempotencyKey: crypto.randomUUID() },
+        targetOrder.accessToken,
+      );
+      const nextOrder = { ...targetOrder, ...(result.order || {}), accessToken: targetOrder.accessToken };
+      setOrders((current: Any[]) => current.map((savedOrder: Any) => savedOrder.id === targetOrder.id ? nextOrder : savedOrder));
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
   }
   const menuBusiness = !!b?.capabilities?.menu;
   const appearance = { ...appearanceDefaults, ...(b?.profile?.appearance || {}) };
@@ -3288,62 +3339,87 @@ function Customer({ slug, initialView = "hub" }: { slug: string; initialView?: "
           </section>
         </div>
       )}
-      {order ? (
-        <section className="card spaced customer-order-status-card">
-          <div className="card-heading">
+      {orders.length > 0 && (
+        <section className="customer-order-history" aria-label="Your recent orders">
+          <div className="customer-order-history-heading">
             <div>
-              <Badge>YOUR ORDER</Badge>
-              <h2>#{order.id.slice(0, 8)}</h2>
+              <Badge>YOUR ORDERS</Badge>
+              <h2>Track what you already placed</h2>
+              <p>Existing orders keep their own edit window. You can keep adding new items from the menu below.</p>
             </div>
-            <Badge tone="green">{label(order.state)}</Badge>
+            <span role="status">{connection}</span>
           </div>
-          <p>
-            {order.state === "submitted"
-              ? "Received. Waiting for the business to accept your order."
-              : `Your order is ${label(order.state)}.`}
-          </p>
-          <div role="status" className="muted">
-            {connection}
+          <div className="customer-order-history-list">
+            {orders.slice(0, 4).map((savedOrder: Any, orderIndex: number) => {
+              const terminal = ["completed", "cancelled", "rejected", "closed"].includes(savedOrder.state);
+              return (
+                <article className="card spaced customer-order-status-card" key={savedOrder.id}>
+                  <div className="card-heading">
+                    <div>
+                      <Badge>{orderIndex === 0 ? "LATEST ORDER" : "EARLIER ORDER"}</Badge>
+                      <h3>#{savedOrder.publicOrderNumber || savedOrder.id.slice(0, 8)}</h3>
+                    </div>
+                    <Badge tone={terminal ? "" : "green"}>{label(savedOrder.state)}</Badge>
+                  </div>
+                  <p>
+                    {savedOrder.state === "submitted"
+                      ? "Received. Waiting for the business to accept this order."
+                      : terminal
+                        ? `This order is ${label(savedOrder.state)}.`
+                        : `This order is ${label(savedOrder.state)}.`}
+                  </p>
+                  <div className="customer-order-items">
+                    {(savedOrder.orderItems || []).map((item: Any) => {
+                      const remaining = Math.max(0, Number(item.quantity || 0) - Number(item.cancelled_quantity || 0));
+                      const deadline = item.cancellable_until ? new Date(item.cancellable_until).getTime() : 0;
+                      const withinWindow = deadline > Date.now();
+                      const paid = ["paid", "verified", "captured"].includes(String(savedOrder.payment_state || "").toLowerCase());
+                      const canEdit = !terminal && !paid && withinWindow && remaining > 0;
+                      return (
+                        <div className="customer-order-item-row" key={item.order_item_id}>
+                          <div>
+                            <strong>{remaining} × {item.item_name_snapshot}</strong>
+                            {Number(item.cancelled_quantity || 0) > 0 && <small>{item.cancelled_quantity} cancelled</small>}
+                            {canEdit ? (
+                              <small>Changes allowed until {new Date(item.cancellable_until).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</small>
+                            ) : (
+                              <small>{paid ? "Locked after payment" : terminal ? "Order closed" : "Edit window ended · ask staff for help"}</small>
+                            )}
+                          </div>
+                          <div className="customer-order-item-actions">
+                            <strong>{money(Number(item.unit_price_snapshot || 0) * remaining)}</strong>
+                            {canEdit && (
+                              <button className="text-button customer-order-cancel" disabled={busy} onClick={() => void cancelCustomerItem(savedOrder, item)}>
+                                {remaining > 1 ? "Remove one" : "Cancel item"}
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                  <div className="customer-order-total">
+                    <strong>Total {money(savedOrder.amount_paise)}</strong>
+                    <Badge>{label(savedOrder.payment_state)}</Badge>
+                  </div>
+                  {savedOrder.payment_state === "pending" &&
+                    savedOrder.payment_method === "upi" &&
+                    !terminal && (
+                      <button className="primary" onClick={() => requestPayment(undefined, true, savedOrder)}>
+                        Continue to payment
+                      </button>
+                    )}
+                </article>
+              );
+            })}
           </div>
-          {order.lines.map((i: Any) => (
-            <div className="list-row" key={i.itemId}>
-              <span>
-                {i.quantity} × {i.name}
-              </span>
-              <strong>{money(i.pricePaise * i.quantity)}</strong>
-            </div>
-          ))}
-          <div className="list-row">
-            <strong>Total {money(order.amount_paise)}</strong>
-            <Badge>{label(order.payment_state)}</Badge>
+          <div className="customer-order-more">
+            <div><Plus size={18} /><span><strong>Want anything else?</strong><small>Add it below. A new checkout will not change or unlock an older order.</small></span></div>
+            {view !== "menu" && <button className="secondary" onClick={() => navigate("menu")}>Add more items</button>}
           </div>
-          {order.payment_state === "pending" &&
-            order.payment_method === "upi" &&
-            !["completed", "cancelled", "rejected"].includes(order.state) && (
-              <button className="primary" onClick={() => requestPayment(undefined, true)}>
-                Continue to payment
-              </button>
-            )}
-          <small>
-            Keep this browser to recover your order. Payment remains pending
-            until confirmed. Contact the business if you need to change or
-            cancel.
-          </small>
-          {["completed", "cancelled", "rejected"].includes(order.state) && (
-            <button
-              className="secondary"
-              onClick={() => {
-                setOrder(null);
-                setPayment(null);
-                localStorage.removeItem(`order:${slug}`);
-              }}
-            >
-              Start another order
-            </button>
-          )}
         </section>
-      ) : (
-        <>
+      )}
+      
       {view === "menu" && b.items.length > 0 && (
             <section className="customer-menu">
               <div className="section-title">
@@ -3486,9 +3562,7 @@ function Customer({ slug, initialView = "hub" }: { slug: string; initialView?: "
               )}
             </section>
           )}
-        </>
-      )}
-      {configItem && (
+{configItem && (
         <div className="modal-backdrop" role="dialog" aria-modal="true" aria-label={`Configure ${configItem.name}`}>
           <div className="config-sheet card">
             <div className="card-heading"><div><Badge>CHOOSE OPTIONS</Badge><h2>{configItem.name}</h2></div><button className="text-button" onClick={() => setConfigItem(null)}>Close</button></div>
