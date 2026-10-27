@@ -247,6 +247,10 @@ small { display: block; color: var(--muted); font-size: 12px; line-height: 1.55;
 .narrow { width: min(100%, 760px); margin: 0 auto; }
 .onboarding-card { padding: clamp(28px,4vw,52px); background: #0d0d0f; border-color: rgba(255,255,255,.1); }
 .setup-heading { display: flex; align-items: flex-end; justify-content: space-between; gap: 20px; padding-bottom: 20px; border-bottom: 1px solid var(--line); }
+.setup-heading-actions { display: flex; align-items: center; justify-content: flex-end; flex-wrap: wrap; gap: 12px; }
+.setup-exit, .setup-shell-back { display: inline-flex; align-items: center; gap: 6px; }
+.setup-shell-inline { width: min(100%, 760px); margin: 0 auto; }
+.setup-shell-back { margin: 0 0 14px; }
 .setup-business { display: block; color: var(--text); font-size: 15px; font-weight: 600; }
 .setup-count { color: var(--faint); font-size: 12px; font-variant-numeric: tabular-nums; }
 .onboarding-progress { display: grid; grid-template-columns: repeat(6,1fr); gap: 8px; padding: 20px 0 28px; margin-bottom: 0; border-bottom: 0; color: var(--muted); }
@@ -1517,4 +1521,11 @@ body { letter-spacing: -.005em; }
   .platform-sidebar nav button.mobile-dock-primary {
     font-size: 9px !important;
   }
+}
+
+
+@media (max-width: 620px) {
+  .setup-heading { align-items: flex-start; }
+  .setup-heading-actions { align-items: flex-end; flex-direction: column-reverse; gap: 8px; }
+  .setup-exit { min-height: 36px; }
 }
