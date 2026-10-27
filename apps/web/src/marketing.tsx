@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import { seoLandings } from "./seo-landings";
 import { isPublicMarketingPath } from "./public-marketing-paths";
+import "./marketing-flagship.css";
 import {
   ArrowRight, ArrowUpRight, Check, ChevronDown, ChevronRight, Menu,
   QrCode, ShoppingBag, Smartphone, Store, Wallet, Users, BarChart3,
