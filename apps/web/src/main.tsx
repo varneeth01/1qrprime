@@ -2942,8 +2942,10 @@ function Customer({ slug, initialView = "hub" }: { slug: string; initialView?: "
     [rewardQuote, setRewardQuote] = useState<Any | null>(null);
   const [reviewOpen, setReviewOpen] = useState(false), [slideValue, setSlideValue] = useState(0), [cartOpen, setCartOpen] = useState(false);
   const order = orders[0] || null;
+  const cartSheetVisible = cartOpen || pending;
   const orderPollKey = orders.map((item: Any) => `${item.id}:${item.accessToken || ""}`).join("|");
   const loaded = useRef(false);
+  const cartSheetRef = useRef<HTMLElement | null>(null);
   const tableQuery = () => window.location.search || "";
   const event = (kind: string) =>
     api(`/public/${slug}/events`, "POST", { kind }).catch(() => {});
@@ -3034,6 +3036,21 @@ function Customer({ slug, initialView = "hub" }: { slug: string; initialView?: "
     localStorage.setItem(`orders:${slug}`, JSON.stringify(orders.slice(0, 8)));
     localStorage.removeItem(`order:${slug}`);
   }, [orders, slug]);
+  useEffect(() => {
+    if (!cartSheetVisible) return;
+    const previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape" && !pending) setCartOpen(false);
+    };
+    document.documentElement.classList.add("customer-cart-open");
+    window.addEventListener("keydown", closeOnEscape);
+    window.requestAnimationFrame(() => cartSheetRef.current?.focus());
+    return () => {
+      document.documentElement.classList.remove("customer-cart-open");
+      window.removeEventListener("keydown", closeOnEscape);
+      previousFocus?.focus();
+    };
+  }, [cartSheetVisible, pending]);
   const lines = b?.items.filter((i: Any) => cart[i.id] > 0) || [],
     total = lines.reduce(
       (sum: number, i: Any) => sum + effectiveItemPricePaise(i) * cart[i.id],
@@ -3242,7 +3259,7 @@ function Customer({ slug, initialView = "hub" }: { slug: string; initialView?: "
         )}
         <div className="customer-top-actions">
           {view === "menu" && <button className="customer-top-button" aria-label="Search menu" onClick={() => document.querySelector<HTMLInputElement>(".customer-menu-search")?.focus()}><Search size={18} /></button>}
-          {lines.length > 0 && <button className="customer-top-button customer-top-cart" aria-label={`${lines.reduce((sum: number, i: Any) => sum + cart[i.id], 0)} items in cart`} onClick={() => setCartOpen(true)}><ShoppingBag size={18} /><span>{lines.reduce((sum: number, i: Any) => sum + cart[i.id], 0)}</span></button>}
+          {lines.length > 0 && <button className="customer-top-button customer-top-cart" aria-label={`${lines.reduce((sum: number, i: Any) => sum + cart[i.id], 0)} items in cart`} aria-haspopup="dialog" aria-expanded={cartSheetVisible} onClick={() => setCartOpen(true)}><ShoppingBag size={18} /><span>{lines.reduce((sum: number, i: Any) => sum + cart[i.id], 0)}</span></button>}
         </div>
       </header>
       <div className="customer-hero">
@@ -3315,7 +3332,7 @@ function Customer({ slug, initialView = "hub" }: { slug: string; initialView?: "
       {view === "menu" && !!b.promotions?.length && <section className="customer-menu-featured" aria-label="Featured offers"><div className="customer-feature-heading"><Badge tone="amber">SPECIAL OFFERS</Badge><span>Live on this menu</span></div>{b.promotions.slice(0, 3).map((promotion: Any) => <button type="button" className="customer-menu-offer" key={promotion.id} onClick={() => openPromotion(promotion.id)}><div><strong>{promotion.title}</strong><small>{promotion.description}</small></div><span>See offer <ArrowUpRight size={14} /></span></button>)}</section>}
       {view === "menu" && !!b.challenges?.length && <section className="customer-menu-featured" aria-label="Challenges"><div className="customer-feature-heading"><Badge tone="green">CHALLENGES</Badge><span>Make your next visit count</span></div>{b.challenges.slice(0, 3).map((challenge: Any) => <div className="customer-menu-offer challenge" key={challenge.id}><div><strong>{challenge.customer_title}</strong><small>{challenge.description}</small></div><span>{challenge.target} goal</span></div>)}</section>}
       {payment && (
-        <section className="card">
+        <section className="card customer-payment-status">
           <h2>Continue to your UPI app</h2>
           <p>
             Pay {payment.snapshot.payee} · {payment.snapshot.vpa}
@@ -3500,10 +3517,10 @@ function Customer({ slug, initialView = "hub" }: { slug: string; initialView?: "
               )}
             </section>
           )}
-      {view === "menu" && lines.length > 0 && !pending && <button className="customer-cart-bar" onClick={() => setCartOpen(true)}><span className="cart-count">{lines.reduce((sum: number, i: Any) => sum + cart[i.id], 0)}</span><span><strong>View cart</strong><small>{lines.reduce((sum: number, i: Any) => sum + cart[i.id], 0)} {lines.reduce((sum: number, i: Any) => sum + cart[i.id], 0) === 1 ? "item" : "items"}</small></span><b>{money(total)}</b><ChevronRight size={18} /></button>}
-      {view === "menu" && (lines.length > 0 || pending) && (cartOpen || pending) && (
+      {view === "menu" && lines.length > 0 && !pending && <button className="customer-cart-bar" aria-haspopup="dialog" aria-expanded={cartSheetVisible} onClick={() => setCartOpen(true)}><span className="cart-count">{lines.reduce((sum: number, i: Any) => sum + cart[i.id], 0)}</span><span><strong>View cart</strong><small>{lines.reduce((sum: number, i: Any) => sum + cart[i.id], 0)} {lines.reduce((sum: number, i: Any) => sum + cart[i.id], 0) === 1 ? "item" : "items"}</small></span><b>{money(total)}</b><ChevronRight size={18} /></button>}
+      {view === "menu" && (lines.length > 0 || pending) && cartSheetVisible && (
             <div className="customer-cart-sheet-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget && !pending) setCartOpen(false); }}>
-            <section className="card cart customer-cart-panel" role="dialog" aria-modal="true" aria-labelledby="customer-cart-title">
+            <section ref={cartSheetRef} tabIndex={-1} className="card cart customer-cart-panel" role="dialog" aria-modal="true" aria-labelledby="customer-cart-title">
               <div className="customer-cart-sheet-head">
                 <div><Badge>YOUR CART</Badge><h2 id="customer-cart-title">Review your order</h2><p>Make changes before sending it to {b.name}.</p></div>
                 {!pending && <button type="button" className="customer-sheet-close" aria-label="Close cart" onClick={() => setCartOpen(false)}>×</button>}
