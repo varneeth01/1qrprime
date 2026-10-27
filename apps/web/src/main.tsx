@@ -3137,7 +3137,7 @@ function Customer({ slug, initialView = "hub" }: { slug: string; initialView?: "
     [rewardQuote, setRewardQuote] = useState<Any | null>(null);
   const [reviewOpen, setReviewOpen] = useState(false), [slideValue, setSlideValue] = useState(0), [cartOpen, setCartOpen] = useState(false);
   const order = orders[0] || null;
-  const cartSheetVisible = cartOpen || pending;
+  const cartSheetVisible = cartOpen;
   const orderPollKey = orders.map((item: Any) => `${item.id}:${item.accessToken || ""}`).join("|");
   const loaded = useRef(false);
   const cartSheetRef = useRef<HTMLElement | null>(null);
@@ -3235,7 +3235,7 @@ function Customer({ slug, initialView = "hub" }: { slug: string; initialView?: "
     if (!cartSheetVisible) return;
     const previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     const closeOnEscape = (event: KeyboardEvent) => {
-      if (event.key === "Escape" && !pending) setCartOpen(false);
+      if (event.key === "Escape") setCartOpen(false);
     };
     document.documentElement.classList.add("customer-cart-open");
     window.addEventListener("keydown", closeOnEscape);
@@ -3718,13 +3718,13 @@ function Customer({ slug, initialView = "hub" }: { slug: string; initialView?: "
               )}
             </section>
           )}
-      {view === "menu" && lines.length > 0 && !pending && <button className="customer-cart-bar" aria-haspopup="dialog" aria-expanded={cartSheetVisible} onClick={() => setCartOpen(true)}><span className="cart-count">{lines.reduce((sum: number, i: Any) => sum + cart[i.id], 0)}</span><span><strong>View cart</strong><small>{lines.reduce((sum: number, i: Any) => sum + cart[i.id], 0)} {lines.reduce((sum: number, i: Any) => sum + cart[i.id], 0) === 1 ? "item" : "items"}</small></span><b>{money(total)}</b><ChevronRight size={18} /></button>}
+      {view === "menu" && (lines.length > 0 || pending) && <button className={`customer-cart-bar ${pending ? "is-recovery" : ""}`} aria-haspopup="dialog" aria-expanded={cartSheetVisible} onClick={() => setCartOpen(true)}><span className="cart-count">{lines.reduce((sum: number, i: Any) => sum + cart[i.id], 0)}</span><span><strong>{pending ? "Recover order" : "View cart"}</strong><small>{pending ? "Previous request needs attention" : `${lines.reduce((sum: number, i: Any) => sum + cart[i.id], 0)} ${lines.reduce((sum: number, i: Any) => sum + cart[i.id], 0) === 1 ? "item" : "items"}`}</small></span><b>{money(total)}</b><ChevronRight size={18} /></button>}
       {view === "menu" && (lines.length > 0 || pending) && cartSheetVisible && (
-            <div className="customer-cart-sheet-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget && !pending) setCartOpen(false); }}>
+            <div className="customer-cart-sheet-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setCartOpen(false); }}>
             <section ref={cartSheetRef} tabIndex={-1} className="card cart customer-cart-panel" role="dialog" aria-modal="true" aria-labelledby="customer-cart-title">
               <div className="customer-cart-sheet-head">
-                <div><Badge>YOUR CART</Badge><h2 id="customer-cart-title">Review your order</h2><p>Make changes before sending it to {b.name}.</p></div>
-                {!pending && <button type="button" className="customer-sheet-close" aria-label="Close cart" onClick={() => setCartOpen(false)}>×</button>}
+                <div><Badge>{pending ? "ORDER RECOVERY" : "YOUR CART"}</Badge><h2 id="customer-cart-title">{pending ? "Recover your order" : "Review your order"}</h2><p>{pending ? `This request has not been confirmed. You can close this panel and keep browsing, then reopen Recover order to retry the same request safely.` : `Make changes before sending it to ${b.name}.`}</p></div>
+                <button type="button" className="customer-sheet-close" aria-label="Close cart and return to menu" onClick={() => setCartOpen(false)}>×</button>
               </div>
               <div className="customer-cart-lines">
                 {lines.map((i: Any) => (
