@@ -3090,8 +3090,12 @@ function Customer({ slug, initialView = "hub" }: { slug: string; initialView?: "
     setPending(true);
     try {
       const o = await api(`/public/${slug}/orders`, "POST", body);
-      setOrder(o);
+      setOrders((current: Any[]) => [o, ...current.filter((savedOrder: Any) => savedOrder.id !== o.id)].slice(0, 8));
       setCart({});
+      setCustomizations({});
+      setInstructions("");
+      setSelectedRewardId(null);
+      setRewardQuote(null);
       localStorage.removeItem(`pending:${slug}`);
       setPending(false);
     } catch (e) {
@@ -3133,21 +3137,21 @@ function Customer({ slug, initialView = "hub" }: { slug: string; initialView?: "
       setRewardError(message.includes("already") || message.includes("no longer") ? "This reward has already been used." : message);
     } finally { setRewardBusy(false); }
   }
-  function requestPayment(amount?: number, linkedOrder = false) {
+  function requestPayment(amount?: number, linkedOrder = false, targetOrder: Any | null = order) {
     setPaymentPhoneError("");
-    setPaymentIntent({ amount, linkedOrder });
+    setPaymentIntent({ amount, linkedOrder, ...(linkedOrder && targetOrder ? { orderId: targetOrder.id } : {}) });
     setPaySheetOpen(true);
   }
-  async function pay(amount?: number, linkedOrder = false, phoneValue = customerPhone) {
+  async function pay(amount?: number, linkedOrder = false, phoneValue = customerPhone, targetOrder: Any | null = order) {
     try {
-      const key = `payment:${linkedOrder && order ? order.id : slug}`;
+      const key = `payment:${linkedOrder && targetOrder ? targetOrder.id : slug}`;
       let paymentKey = sessionStorage.getItem(key);
       if (!paymentKey) {
         paymentKey = crypto.randomUUID();
         sessionStorage.setItem(key, paymentKey);
       }
       const p = await api(
-        linkedOrder && order ? `/orders/${order.id}/payments` : `/public/${slug}/payments`,
+        linkedOrder && targetOrder ? `/orders/${targetOrder.id}/payments` : `/public/${slug}/payments`,
         "POST",
         {
           idempotencyKey: paymentKey,
@@ -3156,7 +3160,7 @@ function Customer({ slug, initialView = "hub" }: { slug: string; initialView?: "
           ...(amount ? { amountPaise: amount } : {}),
           ...(!linkedOrder && b?.table ? { tableId: b.table.id, tableToken: b.table.publicToken } : {}),
         },
-        order?.accessToken,
+        targetOrder?.accessToken,
       );
       setPayment(p);
       event("payment_click");
@@ -3176,7 +3180,32 @@ function Customer({ slug, initialView = "hub" }: { slug: string; initialView?: "
     sessionStorage.setItem(`customer-phone:${slug}`, normalized);
     setPaymentPhoneError("");
     setPaySheetOpen(false);
-    if (paymentIntent) await pay(paymentIntent.amount, paymentIntent.linkedOrder, normalized);
+    if (paymentIntent) {
+      const targetOrder = paymentIntent.orderId
+        ? orders.find((savedOrder: Any) => savedOrder.id === paymentIntent.orderId) || null
+        : order;
+      await pay(paymentIntent.amount, paymentIntent.linkedOrder, normalized, targetOrder);
+    }
+  }
+  async function cancelCustomerItem(targetOrder: Any, item: Any) {
+    const remaining = Number(item.quantity || 0) - Number(item.cancelled_quantity || 0);
+    if (remaining <= 0) return;
+    setBusy(true);
+    setError("");
+    try {
+      const result = await api(
+        `/orders/${targetOrder.id}/items/${item.order_item_id}/cancel`,
+        "POST",
+        { quantity: 1, idempotencyKey: crypto.randomUUID() },
+        targetOrder.accessToken,
+      );
+      const nextOrder = { ...targetOrder, ...(result.order || {}), accessToken: targetOrder.accessToken };
+      setOrders((current: Any[]) => current.map((savedOrder: Any) => savedOrder.id === targetOrder.id ? nextOrder : savedOrder));
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
   }
   const menuBusiness = !!b?.capabilities?.menu;
   const appearance = { ...appearanceDefaults, ...(b?.profile?.appearance || {}) };
