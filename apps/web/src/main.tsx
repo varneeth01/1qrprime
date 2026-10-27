@@ -3754,7 +3754,7 @@ function Customer({ slug, initialView = "hub" }: { slug: string; initialView?: "
               {type !== "dine_in" && <Field title="Phone number" inputMode="tel" value={customerPhone} disabled={pending} onChange={(e: any) => { setCustomerPhone(e.target.value); setRewardError(""); }} />}
               {customerPhone && <label className="customer-marketing-consent"><input type="checkbox" disabled={pending} checked={whatsappMarketingConsent} onChange={(event) => setWhatsappMarketingConsent(event.target.checked)} /><span><strong>Send me offers and updates from {b.name} on WhatsApp</strong><small>Optional. You can unsubscribe anytime.</small></span></label>}
               <div className="customer-rewards-panel">
-                <div className="customer-rewards-heading"><span><Gift size={17} /> Rewards</span><button type="button" className="text-button" disabled={rewardBusy || pending} onClick={() => void loadRewards()}>{rewardBusy ? "Checking…" : "Check rewards"}</button></div>
+                <div className="customer-rewards-heading"><span><Gift size={17} /> Rewards</span>{type !== "dine_in" && <button type="button" className="text-button" disabled={rewardBusy || pending} onClick={() => void loadRewards()}>{rewardBusy ? "Checking…" : "Check rewards"}</button>}</div>
                 {type === "dine_in" && (
                   <label className="customer-rewards-phone">
                     <span>Mobile number</span>
