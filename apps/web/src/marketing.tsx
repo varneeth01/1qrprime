@@ -270,10 +270,19 @@ function MarketingHeader() {
   const [open, setOpen] = useState(false);
   const [scrolled, setScrolled] = useState(false);
   useEffect(() => {
-    const update = () => setScrolled(window.scrollY > 24);
+    const update = () => {
+      setScrolled(window.scrollY > 24);
+      const max = Math.max(1, document.documentElement.scrollHeight - window.innerHeight);
+      document.documentElement.style.setProperty("--marketing-progress", String(Math.min(1, Math.max(0, window.scrollY / max))));
+    };
     update();
     window.addEventListener("scroll", update, { passive: true });
-    return () => window.removeEventListener("scroll", update);
+    window.addEventListener("resize", update);
+    return () => {
+      window.removeEventListener("scroll", update);
+      window.removeEventListener("resize", update);
+      document.documentElement.style.removeProperty("--marketing-progress");
+    };
   }, []);
   return <header className={`marketing-header flagship-nav ${scrolled ? "is-scrolled" : ""}`}>
     <a className="marketing-brand" href="/" aria-label="1QR Prime home"><Mark /><span>1QR <b>Prime</b></span></a>
@@ -383,7 +392,7 @@ function StoryShowcase() {
 }
 
 function BentoFeatures() {
-  return <section className="flagship-bento marketing-section">
+  return <section className="flagship-bento marketing-section reveal-on-scroll">
     <div className="section-heading flagship-section-heading">
       <span className="marketing-eyebrow">Built for real service, not a demo reel</span>
       <h2>Everything important.<br /><em>Nothing fighting for attention.</em></h2>
@@ -419,10 +428,41 @@ function FeatureStrip() { return <div className="feature-strip"><div><QrCode /><
 
 function Landing() {
   const [faq, setFaq] = useState<number | null>(null);
+  const heroRef = useRef<HTMLElement | null>(null);
+  useEffect(() => {
+    const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const nodes = Array.from(document.querySelectorAll<HTMLElement>(".flagship-home .reveal-on-scroll"));
+    if (reduced || !("IntersectionObserver" in window)) {
+      nodes.forEach((node) => node.classList.add("is-visible"));
+      return;
+    }
+    const observer = new IntersectionObserver((entries) => {
+      entries.forEach((entry) => {
+        if (entry.isIntersecting) {
+          (entry.target as HTMLElement).classList.add("is-visible");
+          observer.unobserve(entry.target);
+        }
+      });
+    }, { rootMargin: "0px 0px -12% 0px", threshold: .08 });
+    nodes.forEach((node) => observer.observe(node));
+    return () => observer.disconnect();
+  }, []);
+  const moveHero = (event: React.PointerEvent<HTMLElement>) => {
+    if (!window.matchMedia("(pointer:fine)").matches) return;
+    const node = heroRef.current;
+    if (!node) return;
+    const rect = node.getBoundingClientRect();
+    const x = Math.min(1, Math.max(0, (event.clientX - rect.left) / rect.width));
+    const y = Math.min(1, Math.max(0, (event.clientY - rect.top) / rect.height));
+    node.style.setProperty("--hero-x", `${x * 100}%`);
+    node.style.setProperty("--hero-y", `${y * 100}%`);
+    node.style.setProperty("--hero-tilt-x", `${(0.5 - y) * 3.2}deg`);
+    node.style.setProperty("--hero-tilt-y", `${(x - 0.5) * 5.2}deg`);
+  };
   const faqs = [["What is 1QR Prime?", "A merchant workspace and customer page connected by one permanent QR. Menus, orders, tables, payment destinations and team access live together."], ["Does the QR ever change?", "Your permanent /q/ QR identity is designed to stay stable while the content behind it changes."], ["Do customers need an app?", "No. Customers use the browser on their phone."], ["How many staff accounts are included?", "Prime supports up to five non-owner staff accounts with permission-based access."], ["Which businesses can use Prime?", "Prime currently focuses on restaurants, cafés and hotels. Other categories can talk to the team."], ["Does 1QR Prime process customer money?", "Payment apps and providers handle transfers. 1QR Prime presents the configured destination and keeps the status wording honest."]];
   const headline = ["One", "QR.", "The", "business", "behind", "it."];
   return <><Meta path="/" /><CursorFollower /><MarketingHeader /><main className="marketing-home flagship-home">
-    <section className="marketing-hero flagship-hero">
+    <section className="marketing-hero flagship-hero" ref={heroRef} onPointerMove={moveHero}>
       <div className="flagship-hero-orbit" aria-hidden="true"><span/><span/><span/></div>
       <div className="hero-copy flagship-hero-copy">
         <span className="marketing-eyebrow"><Sparkles size={14} /> One permanent QR · Built for local business</span>
@@ -441,7 +481,7 @@ function Landing() {
       </div>
     </section>
 
-    <section className="flagship-intro">
+    <section className="flagship-intro reveal-on-scroll">
       <span className="marketing-eyebrow">The useful part is what happens after the scan</span>
       <h2>One public moment.<br/><em>One operating system behind it.</em></h2>
       <p>Guests see a fast, focused page. Your team sees the controls that keep service moving. Both stay connected to the same permanent QR.</p>
@@ -451,19 +491,19 @@ function Landing() {
     <StoryShowcase />
     <BentoFeatures />
 
-    <section className="marketing-section flagship-menu-story">
+    <section className="marketing-section flagship-menu-story reveal-on-scroll">
       <div className="flagship-menu-copy"><span className="marketing-eyebrow">Menu management</span><h2>Your menu changes.<br /><em>Your QR doesn't.</em></h2><p>Update prices, categories and availability while the printed code on your table stays the same.</p><a className="marketing-text-link" href="/features">See all product capabilities <ArrowRight size={15}/></a></div>
       <div className="menu-window flagship-menu-window"><div className="menu-window-head"><span>Menu</span><b>+ Add item</b></div><div className="menu-line"><span className="menu-thumb warm" /><div><b>Masala omelette</b><small>Breakfast · ₹180</small></div><i>Available</i></div><div className="menu-line"><span className="menu-thumb green" /><div><b>Filter coffee</b><small>Drinks · ₹90</small></div><i>Available</i></div><div className="menu-line muted-line"><span className="menu-thumb pale" /><div><b>Seasonal tart</b><small>Desserts · ₹220</small></div><i>Hidden</i></div><div className="menu-window-footer"><span>Changes publish behind the same QR</span><Check size={15}/></div></div>
     </section>
 
-    <section className="marketing-section pricing-section flagship-pricing">
+    <section className="marketing-section pricing-section flagship-pricing reveal-on-scroll">
       <div className="section-heading flagship-section-heading"><span className="marketing-eyebrow">Simple to start</span><h2>A serious product.<br /><em>One clear plan.</em></h2><p>Prime includes the essential QR, customer and operating tools for restaurants, cafés and hotels.</p></div>
       <div className="pricing-layout"><div className="price-card"><div className="price-top"><span>PRIME</span><b>Launch price</b></div><div className="price"><del>₹1,599</del><strong>₹599</strong><span>/ month</span></div><p>For restaurants, cafés and hotels getting started with one permanent QR.</p><ul>{["Permanent dynamic QR", "Customer page and digital menu", "Orders and table QR codes", "Payment destination management", "Analytics and up to 5 staff", "Support when you need it"].map(x => <li key={x}><Check size={16} />{x}</li>)}</ul><a className="marketing-button light wide" href="/signup">Start with Prime <ArrowRight size={16} /></a></div><div className="custom-card"><span className="marketing-eyebrow">Something different?</span><h3>Build the rollout around your business.</h3><p>Other categories can talk to the team about a custom onboarding path.</p><a className="marketing-text-link" href="/contact">Talk to sales <ArrowRight size={15} /></a></div></div>
     </section>
 
-    <section className="marketing-section faq-section flagship-faq"><div className="section-heading"><span className="marketing-eyebrow">Before you start</span><h2>Clear answers.<br /><em>No hidden story.</em></h2></div><div className="faq-list">{faqs.map(([q, a], i) => <div className={`faq-item ${faq===i?"open":""}`} key={q}><button onClick={() => setFaq(faq === i ? null : i)} aria-expanded={faq === i}><span>{q}</span>{faq === i ? <X size={17} /> : <ChevronDown size={17} />}</button><div className="faq-answer" aria-hidden={faq!==i}>{faq === i && <p>{a}</p>}</div></div>)}</div></section>
+    <section className="marketing-section faq-section flagship-faq reveal-on-scroll"><div className="section-heading"><span className="marketing-eyebrow">Before you start</span><h2>Clear answers.<br /><em>No hidden story.</em></h2></div><div className="faq-list">{faqs.map(([q, a], i) => <div className={`faq-item ${faq===i?"open":""}`} key={q}><button onClick={() => setFaq(faq === i ? null : i)} aria-expanded={faq === i}><span>{q}</span>{faq === i ? <X size={17} /> : <ChevronDown size={17} />}</button><div className="faq-answer" aria-hidden={faq!==i}>{faq === i && <p>{a}</p>}</div></div>)}</div></section>
 
-    <section className="marketing-cta-section flagship-cta"><div className="flagship-cta-mark"><Mark/></div><span className="marketing-eyebrow">Ready when you are</span><h2>Put one QR<br /><em>to work.</em></h2><p>Start with the customer page. Keep the operating tools behind it.</p><div className="hero-actions"><a className="marketing-button light flagship-primary" href="/signup">Start with Prime <ArrowRight size={16} /></a><a className="marketing-text-link" href="/contact">Talk to sales <ArrowRight size={15} /></a></div></section>
+    <section className="marketing-cta-section flagship-cta reveal-on-scroll"><div className="flagship-cta-mark"><Mark/></div><span className="marketing-eyebrow">Ready when you are</span><h2>Put one QR<br /><em>to work.</em></h2><p>Start with the customer page. Keep the operating tools behind it.</p><div className="hero-actions"><a className="marketing-button light flagship-primary" href="/signup">Start with Prime <ArrowRight size={16} /></a><a className="marketing-text-link" href="/contact">Talk to sales <ArrowRight size={15} /></a></div></section>
   </main><MarketingFooter /></>;
 }
 
