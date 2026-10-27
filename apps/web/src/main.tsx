@@ -59,6 +59,7 @@ import "./apple-ui.css";
 import "./console-theme.css";
 import "./product-polish.css";
 import "./customer-experience.css";
+import "./merchant-ui-polish.css";
 const LazyMarketingRouter = React.lazy(async () => {
   const module = await import("./marketing");
   return { default: module.MarketingRouter };
