@@ -555,6 +555,9 @@ function App() {
       setSection((current) => current === "admin" ? "overview" : current);
     }
   }, [me?.id, me?.adminRole, me?.locations?.length]);
+  useEffect(() => {
+    window.scrollTo({ top: 0, left: 0, behavior: "auto" });
+  }, [section, lid]);
   const pathname = window.location.pathname;
   if (isPublicMarketingPath(pathname)) return <React.Suspense fallback={<div className="boot-screen"><Brand /><Skeleton className="boot-line" /><p>Opening 1QR Prime</p></div>}><LazyMarketingRouter path={pathname} /></React.Suspense>;
   if (pathname === "/login" || pathname === "/signup") {
@@ -677,7 +680,7 @@ function App() {
           <span>
             {tenant?.name || "Business"} <ChevronRight size={14} />{" "}
             <strong>
-              {locationSetupInShell ? "Business setup" : nav.find((x) => x[0] === section)?.[1] || "Support"}
+              {section === "portfolio" ? "Portfolio" : locationSetupInShell ? "Business setup" : nav.find((x) => x[0] === section)?.[1] || "Support"}
             </strong>
           </span>
           <div className="topbar-context">
