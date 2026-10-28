@@ -3141,6 +3141,7 @@ function Customer({ slug, initialView = "hub" }: { slug: string; initialView?: "
   const orderPollKey = orders.map((item: Any) => `${item.id}:${item.accessToken || ""}`).join("|");
   const loaded = useRef(false);
   const cartSheetRef = useRef<HTMLElement | null>(null);
+  const customerPhoneRef = useRef<HTMLInputElement | null>(null);
   const tableQuery = () => window.location.search || "";
   const event = (kind: string) =>
     api(`/public/${slug}/events`, "POST", { kind }).catch(() => {});
@@ -3324,11 +3325,16 @@ function Customer({ slug, initialView = "hub" }: { slug: string; initialView?: "
   function submit() { setCartOpen(false); setReviewOpen(true); }
   async function loadRewards() {
     const normalized = normalizeCustomerPhone(customerPhone);
-    if (!normalized) { setRewardError("Enter a valid mobile number to check rewards."); return; }
+    if (!normalized) {
+      setRewardError("Enter a valid 10-digit mobile number to check rewards.");
+      customerPhoneRef.current?.focus();
+      return;
+    }
     setRewardBusy(true); setRewardError("");
     try {
       const result = await api(`/public/${slug}/rewards`, "POST", { customerPhone: normalized });
       setCustomerPhone(normalized);
+      sessionStorage.setItem(`customer-phone:${slug}`, normalized);
       setRewards(result.rewards || []);
     } catch (e) { setRewardError((e as Error).message); }
     finally { setRewardBusy(false); }
@@ -3465,12 +3471,26 @@ function Customer({ slug, initialView = "hub" }: { slug: string; initialView?: "
             <Badge>{label(b.category)}</Badge>
             <h1>{b.name}</h1>
             {b.profile.description && <p>{b.profile.description}</p>}
-            <div className="customer-meta">
-              {b.profile.manualClosed ? <span className="customer-status closed"><i /> Currently closed</span> : <span className="customer-status"><i /> Open now</span>}
-              {b.profile.address && <span><MapPin size={14} />{b.profile.address}</span>}
-              {b.profile.hours && <span><Clock size={14} />{b.profile.hours}</span>}
-            </div>
           </div>
+          <aside className="customer-visit-card" aria-label="Visit information">
+            {b.profile.manualClosed ? (
+              <span className="customer-status closed"><i /> Currently closed</span>
+            ) : (
+              <span className="customer-status"><i /> Open now</span>
+            )}
+            {b.profile.address && (
+              <span className="customer-visit-row">
+                <MapPin size={16} aria-hidden="true" />
+                <span><small>Location</small><strong>{b.profile.address}</strong></span>
+              </span>
+            )}
+            {b.profile.hours && (
+              <span className="customer-visit-row">
+                <Clock size={16} aria-hidden="true" />
+                <span><small>Hours</small><strong>{b.profile.hours}</strong></span>
+              </span>
+            )}
+          </aside>
           {b.table && <p className="table-context">Ordering for <strong>{b.table.name}</strong></p>}
         </div>
       </div>
@@ -3483,7 +3503,7 @@ function Customer({ slug, initialView = "hub" }: { slug: string; initialView?: "
               const configured = [
                 menuBusiness && !hiddenActions.includes("menu") && { type: "menu", node: <button className="menu-primary" onClick={() => { event("menu_click"); navigate("menu"); }}><span className="hub-icon"><Utensils size={23} aria-hidden="true" /></span><span><strong>View Menu</strong><small>Browse dishes, customise items and order</small></span><ArrowUpRight size={20} /></button> },
                 b.paymentAvailable && !hiddenActions.includes("pay") && { type: "pay", node: <button className="hub-action hub-pay" onClick={() => { event("pay_click"); navigate("pay"); requestPayment(); }}><Wallet size={20} /><span>Pay now</span><ArrowUpRight size={16} /></button> },
-                b.profile.googleReviewUrl && !hiddenActions.includes("review") && { type: "review", node: <div className="review-cta"><div><Star size={24} fill="currentColor" /><span><strong>Enjoyed your experience?</strong><small>Help others discover us.</small></span></div>{external("review_click", b.profile.googleReviewUrl, "Leave a Google Review", Star)}</div> },
+                b.profile.googleReviewUrl && !hiddenActions.includes("review") && { type: "review", node: <a className="review-cta" href={b.profile.googleReviewUrl} target="_blank" rel="noopener noreferrer" onClick={() => event("review_click")}><span className="review-icon"><Star size={20} fill="currentColor" /></span><span className="review-copy"><strong>Enjoyed your experience?</strong><small>Share a quick Google review and help others discover {b.name}.</small></span><span className="review-action">Leave a review <ArrowUpRight size={16} /></span></a> },
                 b.profile.instagramUrl && !hiddenActions.includes("instagram") && { type: "instagram", node: external("instagram_click", b.profile.instagramUrl, "Instagram", Globe, "social-action") },
                 b.profile.facebookUrl && !hiddenActions.includes("facebook") && { type: "facebook", node: external("facebook_click", b.profile.facebookUrl, "Facebook", Globe, "social-action") },
                 b.profile.youtubeUrl && !hiddenActions.includes("youtube") && { type: "youtube", node: external("youtube_click", b.profile.youtubeUrl, "YouTube", Globe, "social-action") },
@@ -3750,10 +3770,32 @@ function Customer({ slug, initialView = "hub" }: { slug: string; initialView?: "
                 onChange={(e: any) => setInstructions(e.target.value)}
               />
               {type !== "dine_in" && <Field title="Name" value={customerName} disabled={pending} onChange={(e: any) => setCustomerName(e.target.value)} />}
-              {type !== "dine_in" && <Field title="Phone number" inputMode="tel" value={customerPhone} disabled={pending} onChange={(e: any) => setCustomerPhone(e.target.value)} />}
+              <label className="customer-mobile-field">
+                <span>Mobile number <em>optional</em></span>
+                <div>
+                  <span className="customer-phone-prefix">+91</span>
+                  <input
+                    ref={customerPhoneRef}
+                    type="tel"
+                    inputMode="numeric"
+                    autoComplete="tel-national"
+                    placeholder="10-digit mobile number"
+                    value={customerPhone.replace(/^\+?91/, "")}
+                    disabled={pending}
+                    aria-describedby="customer-phone-help"
+                    onChange={(event) => {
+                      const digits = event.target.value.replace(/\D/g, "").slice(0, 10);
+                      setCustomerPhone(digits);
+                      setRewardError("");
+                    }}
+                  />
+                </div>
+                <small id="customer-phone-help">Required only for rewards, UPI payment, or order updates. Marketing remains optional.</small>
+              </label>
               {customerPhone && <label className="customer-marketing-consent"><input type="checkbox" disabled={pending} checked={whatsappMarketingConsent} onChange={(event) => setWhatsappMarketingConsent(event.target.checked)} /><span><strong>Send me offers and updates from {b.name} on WhatsApp</strong><small>Optional. You can unsubscribe anytime.</small></span></label>}
               <div className="customer-rewards-panel">
                 <div className="customer-rewards-heading"><span><Gift size={17} /> Rewards</span><button type="button" className="text-button" disabled={rewardBusy || pending} onClick={() => void loadRewards()}>{rewardBusy ? "Checking…" : "Check rewards"}</button></div>
+                <small className="customer-rewards-hint">Enter your mobile number above, then check for available coupons and rewards.</small>
                 {rewardError && <small className="field-message error-text" role="alert">{rewardError}</small>}
                 {rewards.map((reward: Any) => <div className={`customer-reward-card ${reward.status}`} key={reward.id}><div><strong>{reward.status === "available" ? "Reward unlocked" : reward.status === "redeemed" ? "Reward used" : reward.status === "expired" ? "Reward expired" : "Reward unavailable"}</strong><small>{reward.challengeTitle || "Challenge reward"} · {reward.rewardType === "flat_discount" ? `${money(reward.rewardValue)} off your next eligible order` : `${Number(reward.rewardValue) / 100}% off your next eligible order`}</small></div>{reward.status === "available" && <button type="button" className="secondary" disabled={rewardBusy || pending} onClick={() => void applyReward(reward)}>{rewardBusy && selectedRewardId === reward.id ? "Applying…" : selectedRewardId === reward.id ? "Applied" : "Use reward"}</button>}</div>)}
                 {rewardQuote && <div className="customer-reward-summary"><span>Subtotal <strong>{money(rewardQuote.subtotalPaise)}</strong></span><span>Reward <strong>−{money(rewardQuote.rewardDiscountPaise)}</strong></span><span>Total <strong>{money(rewardQuote.totalPaise)}</strong></span><small>Reward applied</small></div>}
