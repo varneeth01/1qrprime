@@ -3770,32 +3770,38 @@ function Customer({ slug, initialView = "hub" }: { slug: string; initialView?: "
                 onChange={(e: any) => setInstructions(e.target.value)}
               />
               {type !== "dine_in" && <Field title="Name" value={customerName} disabled={pending} onChange={(e: any) => setCustomerName(e.target.value)} />}
-              <label className="customer-mobile-field">
-                <span>Mobile number <em>optional</em></span>
-                <div>
-                  <span className="customer-phone-prefix">+91</span>
-                  <input
-                    ref={customerPhoneRef}
-                    type="tel"
-                    inputMode="numeric"
-                    autoComplete="tel-national"
-                    placeholder="10-digit mobile number"
-                    value={customerPhone.replace(/^\+?91/, "")}
-                    disabled={pending}
-                    aria-describedby="customer-phone-help"
-                    onChange={(event) => {
-                      const digits = event.target.value.replace(/\D/g, "").slice(0, 10);
-                      setCustomerPhone(digits);
-                      setRewardError("");
-                    }}
-                  />
-                </div>
-                <small id="customer-phone-help">Required only for rewards, UPI payment, or order updates. Marketing remains optional.</small>
-              </label>
-              {customerPhone && <label className="customer-marketing-consent"><input type="checkbox" disabled={pending} checked={whatsappMarketingConsent} onChange={(event) => setWhatsappMarketingConsent(event.target.checked)} /><span><strong>Send me offers and updates from {b.name} on WhatsApp</strong><small>Optional. You can unsubscribe anytime.</small></span></label>}
               <div className="customer-rewards-panel">
-                <div className="customer-rewards-heading"><span><Gift size={17} /> Rewards</span><button type="button" className="text-button" disabled={rewardBusy || pending} onClick={() => void loadRewards()}>{rewardBusy ? "Checking…" : "Check rewards"}</button></div>
-                <small className="customer-rewards-hint">Enter your mobile number above, then check for available coupons and rewards.</small>
+                <div className="customer-rewards-heading"><span><Gift size={17} /> Rewards &amp; coupons</span></div>
+                <div className="customer-rewards-phone">
+                  <span id="customer-rewards-mobile-label">Mobile number (optional)</span>
+                  <div>
+                    <span className="customer-phone-prefix">+91</span>
+                    <input
+                      id="customer-rewards-mobile"
+                      ref={customerPhoneRef}
+                      type="tel"
+                      inputMode="numeric"
+                      autoComplete="tel-national"
+                      placeholder="10-digit mobile number"
+                      aria-labelledby="customer-rewards-mobile-label"
+                      aria-describedby="customer-rewards-phone-help"
+                      value={customerPhone.startsWith("+91") ? customerPhone.slice(3) : customerPhone}
+                      disabled={pending}
+                      onChange={(event) => {
+                        const inputDigits = event.target.value.replace(/\D/g, "");
+                        const digits = inputDigits.length > 10 && inputDigits.startsWith("91") ? inputDigits.slice(2) : inputDigits;
+                        setCustomerPhone(digits.slice(0, 10));
+                        setRewardError("");
+                        setRewards([]);
+                        setSelectedRewardId(null);
+                        setRewardQuote(null);
+                      }}
+                    />
+                    <button type="button" className="secondary" disabled={rewardBusy || pending} onClick={() => void loadRewards()}>{rewardBusy ? "Checking…" : "Check rewards"}</button>
+                  </div>
+                  <small id="customer-rewards-phone-help">Optional for checkout. Enter your number to find eligible rewards; no account needed.</small>
+                </div>
+                {customerPhone && <label className="customer-marketing-consent"><input type="checkbox" disabled={pending} checked={whatsappMarketingConsent} onChange={(event) => setWhatsappMarketingConsent(event.target.checked)} /><span><strong>Send me offers and updates from {b.name} on WhatsApp</strong><small>Optional. You can unsubscribe anytime.</small></span></label>}
                 {rewardError && <small className="field-message error-text" role="alert">{rewardError}</small>}
                 {rewards.map((reward: Any) => <div className={`customer-reward-card ${reward.status}`} key={reward.id}><div><strong>{reward.status === "available" ? "Reward unlocked" : reward.status === "redeemed" ? "Reward used" : reward.status === "expired" ? "Reward expired" : "Reward unavailable"}</strong><small>{reward.challengeTitle || "Challenge reward"} · {reward.rewardType === "flat_discount" ? `${money(reward.rewardValue)} off your next eligible order` : `${Number(reward.rewardValue) / 100}% off your next eligible order`}</small></div>{reward.status === "available" && <button type="button" className="secondary" disabled={rewardBusy || pending} onClick={() => void applyReward(reward)}>{rewardBusy && selectedRewardId === reward.id ? "Applying…" : selectedRewardId === reward.id ? "Applied" : "Use reward"}</button>}</div>)}
                 {rewardQuote && <div className="customer-reward-summary"><span>Subtotal <strong>{money(rewardQuote.subtotalPaise)}</strong></span><span>Reward <strong>−{money(rewardQuote.rewardDiscountPaise)}</strong></span><span>Total <strong>{money(rewardQuote.totalPaise)}</strong></span><small>Reward applied</small></div>}
