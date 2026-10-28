@@ -3141,6 +3141,7 @@ function Customer({ slug, initialView = "hub" }: { slug: string; initialView?: "
   const orderPollKey = orders.map((item: Any) => `${item.id}:${item.accessToken || ""}`).join("|");
   const loaded = useRef(false);
   const cartSheetRef = useRef<HTMLElement | null>(null);
+  const customerPhoneRef = useRef<HTMLInputElement | null>(null);
   const tableQuery = () => window.location.search || "";
   const event = (kind: string) =>
     api(`/public/${slug}/events`, "POST", { kind }).catch(() => {});
@@ -3324,7 +3325,11 @@ function Customer({ slug, initialView = "hub" }: { slug: string; initialView?: "
   function submit() { setCartOpen(false); setReviewOpen(true); }
   async function loadRewards() {
     const normalized = normalizeCustomerPhone(customerPhone);
-    if (!normalized) { setRewardError("Enter a valid mobile number to check rewards."); return; }
+    if (!normalized) {
+      setRewardError("Enter a valid 10-digit mobile number to check rewards.");
+      customerPhoneRef.current?.focus();
+      return;
+    }
     setRewardBusy(true); setRewardError("");
     try {
       const result = await api(`/public/${slug}/rewards`, "POST", { customerPhone: normalized });
@@ -3765,36 +3770,32 @@ function Customer({ slug, initialView = "hub" }: { slug: string; initialView?: "
                 onChange={(e: any) => setInstructions(e.target.value)}
               />
               {type !== "dine_in" && <Field title="Name" value={customerName} disabled={pending} onChange={(e: any) => setCustomerName(e.target.value)} />}
-              {type !== "dine_in" && <Field title="Phone number" inputMode="tel" value={customerPhone} disabled={pending} onChange={(e: any) => { setCustomerPhone(e.target.value); setRewardError(""); }} />}
+              <label className="customer-mobile-field">
+                <span>Mobile number <em>optional</em></span>
+                <div>
+                  <span className="customer-phone-prefix">+91</span>
+                  <input
+                    ref={customerPhoneRef}
+                    type="tel"
+                    inputMode="numeric"
+                    autoComplete="tel-national"
+                    placeholder="10-digit mobile number"
+                    value={customerPhone.replace(/^\+?91/, "")}
+                    disabled={pending}
+                    aria-describedby="customer-phone-help"
+                    onChange={(event) => {
+                      const digits = event.target.value.replace(/\D/g, "").slice(0, 10);
+                      setCustomerPhone(digits);
+                      setRewardError("");
+                    }}
+                  />
+                </div>
+                <small id="customer-phone-help">Required only for rewards, UPI payment, or order updates. Marketing remains optional.</small>
+              </label>
               {customerPhone && <label className="customer-marketing-consent"><input type="checkbox" disabled={pending} checked={whatsappMarketingConsent} onChange={(event) => setWhatsappMarketingConsent(event.target.checked)} /><span><strong>Send me offers and updates from {b.name} on WhatsApp</strong><small>Optional. You can unsubscribe anytime.</small></span></label>}
               <div className="customer-rewards-panel">
-                <div className="customer-rewards-heading"><span><Gift size={17} /> Rewards</span>{type !== "dine_in" && <button type="button" className="text-button" disabled={rewardBusy || pending} onClick={() => void loadRewards()}>{rewardBusy ? "Checking…" : "Check rewards"}</button>}</div>
-                {type === "dine_in" && (
-                  <label className="customer-rewards-phone">
-                    <span>Mobile number</span>
-                    <div>
-                      <span className="customer-phone-prefix">+91</span>
-                      <input
-                        type="tel"
-                        inputMode="numeric"
-                        autoComplete="tel-national"
-                        placeholder="10-digit mobile number"
-                        value={customerPhone.replace(/^\+?91/, "")}
-                        disabled={pending}
-                        aria-describedby="rewards-phone-help"
-                        onChange={(event) => {
-                          const digits = event.target.value.replace(/\D/g, "").slice(0, 10);
-                          setCustomerPhone(digits);
-                          setRewardError("");
-                        }}
-                      />
-                      <button type="button" className="secondary" disabled={rewardBusy || pending} onClick={() => void loadRewards()}>
-                        {rewardBusy ? "Checking…" : "Find rewards"}
-                      </button>
-                    </div>
-                    <small id="rewards-phone-help">Used only to find your rewards and continue payment. Marketing is optional.</small>
-                  </label>
-                )}
+                <div className="customer-rewards-heading"><span><Gift size={17} /> Rewards</span><button type="button" className="text-button" disabled={rewardBusy || pending} onClick={() => void loadRewards()}>{rewardBusy ? "Checking…" : "Check rewards"}</button></div>
+                <small className="customer-rewards-hint">Enter your mobile number above, then check for available coupons and rewards.</small>
                 {rewardError && <small className="field-message error-text" role="alert">{rewardError}</small>}
                 {rewards.map((reward: Any) => <div className={`customer-reward-card ${reward.status}`} key={reward.id}><div><strong>{reward.status === "available" ? "Reward unlocked" : reward.status === "redeemed" ? "Reward used" : reward.status === "expired" ? "Reward expired" : "Reward unavailable"}</strong><small>{reward.challengeTitle || "Challenge reward"} · {reward.rewardType === "flat_discount" ? `${money(reward.rewardValue)} off your next eligible order` : `${Number(reward.rewardValue) / 100}% off your next eligible order`}</small></div>{reward.status === "available" && <button type="button" className="secondary" disabled={rewardBusy || pending} onClick={() => void applyReward(reward)}>{rewardBusy && selectedRewardId === reward.id ? "Applying…" : selectedRewardId === reward.id ? "Applied" : "Use reward"}</button>}</div>)}
                 {rewardQuote && <div className="customer-reward-summary"><span>Subtotal <strong>{money(rewardQuote.subtotalPaise)}</strong></span><span>Reward <strong>−{money(rewardQuote.rewardDiscountPaise)}</strong></span><span>Total <strong>{money(rewardQuote.totalPaise)}</strong></span><small>Reward applied</small></div>}
